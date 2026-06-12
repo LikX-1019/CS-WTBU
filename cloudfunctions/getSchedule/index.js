@@ -1098,7 +1098,7 @@ function buildGradesResult(records) {
     id: semester.id,
     title: semester.title,
     credit: formatNumber(semester.creditValue, 1),
-    average: formatNumber(semester.scoreSum / semester.scoreCount, 2),
+    average: formatNumber(semester.scoreValue / semester.scoreCredit, 2),
     gpa: formatNumber(semester.gpaValue / semester.gpaCredit, 2),
     expanded: index === 0,
     grades: semester.grades
@@ -1107,7 +1107,7 @@ function buildGradesResult(records) {
   return {
     summary: [
       { label: '总学分', value: formatNumber(totalCredit, 1) },
-      { label: '平均分', value: formatNumber(scoreSum / scoreCount, 2) },
+      { label: '平均分', value: formatNumber(weightedScore / scoreCredit, 2) },
       { label: '绩点', value: formatNumber(weightedGpa / gpaCredit, 2) }
     ],
     semesters: semesterList
@@ -1551,10 +1551,13 @@ async function updateScheduleCache(openid, schedule, exams = []) {
 }
 
 async function updateGradesCache(openid, grades) {
-  await getDatabase().collection(BINDING_COLLECTION).doc(openid).update({
+  const db = getDatabase();
+  const _ = db.command;
+
+  await db.collection(BINDING_COLLECTION).doc(openid).update({
     data: {
-      lastGrades: grades,
-      updatedAt: getDatabase().serverDate()
+      lastGrades: _.set(grades),
+      updatedAt: db.serverDate()
     }
   });
 }

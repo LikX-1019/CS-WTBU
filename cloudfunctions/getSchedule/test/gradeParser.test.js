@@ -20,7 +20,7 @@ const context = {
       return {
         DYNAMIC_CURRENT_ENV: 'test',
         database() {
-          return {};
+          return context.fakeDb || {};
         },
         getWXContext() {
           return { OPENID: 'test-openid' };
@@ -46,6 +46,12 @@ function getFirstGrade(result) {
   assert.strictEqual(result.semesters.length, 1);
   assert.strictEqual(result.semesters[0].grades.length, 1);
   return result.semesters[0].grades[0];
+}
+
+function getSummaryValue(result, label) {
+  const item = result.summary.find((summaryItem) => summaryItem.label === label);
+
+  return item ? item.value : '';
 }
 
 const shiftedByEmptyCell = parse(`
@@ -76,4 +82,51 @@ assert.deepStrictEqual(getFirstGrade(completeRow), {
   gpa: '4.1'
 });
 
-console.log('grade parser tests passed');
+const weightedAverage = parse(`
+<table>
+  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
+  <tr><td>\u4f53\u80b2</td><td>1</td><td>100</td><td>5</td></tr>
+  <tr><td>\u4e13\u4e1a\u8bfe</td><td>4</td><td>85</td><td>3.5</td></tr>
+</table>`);
+
+assert.strictEqual(getSummaryValue(weightedAverage, '\u5e73\u5747\u5206'), '88');
+assert.strictEqual(weightedAverage.semesters[0].average, '88');
+
+let capturedUpdate = null;
+const cachedGrades = { summary: [], semesters: [] };
+
+context.fakeDb = {
+  command: {
+    set(value) {
+      return { __set: value };
+    }
+  },
+  serverDate() {
+    return 'SERVER_DATE';
+  },
+  collection(name) {
+    return {
+      doc(id) {
+        return {
+          update(options) {
+            capturedUpdate = { name, id, options };
+            return Promise.resolve();
+          }
+        };
+      }
+    };
+  }
+};
+
+context.updateGradesCache('openid-1', cachedGrades)
+  .then(() => {
+    assert.strictEqual(capturedUpdate.name, 'eduAccountBindings');
+    assert.strictEqual(capturedUpdate.id, 'openid-1');
+    assert.deepStrictEqual(capturedUpdate.options.data.lastGrades, { __set: cachedGrades });
+    assert.strictEqual(capturedUpdate.options.data.updatedAt, 'SERVER_DATE');
+    console.log('grade parser tests passed');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
