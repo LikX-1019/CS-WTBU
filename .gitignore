@@ -2,4 +2,5 @@ node_modules/
 cloudfunctions/**/node_modules/
 .env
 *.local
+project.private.config.json
 教务系统网址.txt

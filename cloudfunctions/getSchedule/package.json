@@ -11,6 +11,6 @@
     "cheerio": "1.0.0-rc.12",
     "http-cookie-agent": "^6.0.8",
     "tough-cookie": "^4.1.4",
-    "wx-server-sdk": "~2.6.3"
+    "wx-server-sdk": "3.0.4"
   }
 }

@@ -14,17 +14,19 @@ cloudfunctions/getSchedule/  获取教务系统课表的云函数
 project.config.json          微信开发者工具项目配置
 ```
 
+`project.private.config.json` 是微信开发者工具生成的本机配置，不纳入版本库。
+
 ## 使用步骤
 
 1. 用微信开发者工具导入本目录。
 2. 在 `project.config.json` 中把 `appid` 改成你自己的小程序 AppID。
 3. 开通云开发，并创建云环境。
-4. 在 `miniprogram/app.js` 中把 `YOUR_CLOUD_ENV_ID` 改成云环境 ID。
+4. 在 `miniprogram/app.js` 中确认或替换 `wx.cloud.init` 的 `env` 为你的云环境 ID。
 5. 在云开发数据库中创建集合 `eduAccountBindings` 和 `feedbackItems`。
 6. 给云函数 `getSchedule` 配置环境变量：
    - `EDU_PASSWORD_SECRET`：建议使用 32 字节随机 hex 字符串。
    - `ADMIN_OPENIDS`：管理员微信 OpenID 列表，多个 OpenID 可用英文逗号分隔。
-7. 在微信开发者工具中右键 `cloudfunctions/getSchedule`，选择“安装依赖”。
+7. 在微信开发者工具中右键 `cloudfunctions/getSchedule`，选择“安装依赖”；仓库内的 `package-lock.json` 用于锁定云函数依赖版本。
 8. 右键 `cloudfunctions/getSchedule`，选择“上传并部署：云端安装依赖”。
 9. 在模拟器中打开小程序，首次进入会跳转到绑定页，输入教务系统学号和密码绑定。
 
@@ -41,6 +43,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `EDU_PASSWORD_SECRET` 必须妥善保存，后续更换密钥会导致已绑定账号需要重新绑定。
 - `ADMIN_OPENIDS` 只在云函数端校验；管理员入口会出现在“个人”页，未加入名单的用户无法读取后台数据。
 - 数据库集合建议只通过云函数读写，不要让小程序端直接读取绑定集合。
+- 部署前请确认云函数环境变量已配置完成，且 `project.private.config.json` 等本机配置没有提交到版本库。
+- 当前云函数使用 `wx-server-sdk@3.0.4`。`npm audit` 仍会报告微信云 SDK 内部传递依赖风险，升级前请先在云开发环境验证兼容性。
 
 ## 当前状态
 
