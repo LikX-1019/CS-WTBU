@@ -19,6 +19,11 @@ const SECTION_TIMES = {
 };
 const TONES = ['blue', 'green', 'purple', 'yellow', 'red', 'cyan'];
 const ICONS = ['book', 'flask', 'code'];
+const EXAM_STATUS_PRIORITY = {
+  upcoming: 0,
+  completed: 1,
+  unscheduled: 2
+};
 
 function pad(value) {
   return String(value).padStart(2, '0');
@@ -233,31 +238,157 @@ function getExamSortTime(exam) {
   return `${pad(match[1])}:${match[2]}`;
 }
 
-function getTodayExams(exams) {
-  const today = getDayStart(new Date());
+function parseExamTimeRange(value) {
+  const matches = [...String(value || '').matchAll(/(\d{1,2}):(\d{2})/g)]
+    .map((match) => ({
+      hour: Number(match[1]),
+      minute: Number(match[2])
+    }))
+    .filter((time) => (
+      Number.isFinite(time.hour) &&
+      Number.isFinite(time.minute) &&
+      time.hour >= 0 &&
+      time.hour <= 23 &&
+      time.minute >= 0 &&
+      time.minute <= 59
+    ));
 
+  return {
+    start: matches[0] || null,
+    end: matches[1] || null,
+    hasEnd: matches.length > 1
+  };
+}
+
+function buildExamDateTime(date, time) {
+  if (!date || !time) {
+    return null;
+  }
+
+  const value = new Date(date);
+  value.setHours(time.hour, time.minute, 0, 0);
+
+  return value;
+}
+
+function getExamStatus(exam, examDate, now = new Date()) {
+  const source = [exam.status, exam.date, exam.time, exam.dateTime, exam.location, exam.seat].join(' ');
+  const timeRange = parseExamTimeRange([exam.time, exam.dateTime].join(' '));
+
+  if (!examDate || !timeRange.start || /未安排|待安排|待定/.test(source)) {
+    return {
+      key: 'unscheduled',
+      text: '未安排'
+    };
+  }
+
+  const today = getDayStart(now);
+  const examDay = getDayStart(examDate);
+  const endDateTime = timeRange.hasEnd ? buildExamDateTime(examDate, timeRange.end) : null;
+
+  if (endDateTime && now.getTime() > endDateTime.getTime()) {
+    return {
+      key: 'completed',
+      text: '已考完'
+    };
+  }
+
+  if (!endDateTime && examDay.getTime() < today.getTime()) {
+    return {
+      key: 'completed',
+      text: '已考完'
+    };
+  }
+
+  return {
+    key: 'upcoming',
+    text: '未考'
+  };
+}
+
+function getTodayExams(exams, now = new Date()) {
+  const today = getDayStart(now);
+
+  return normalizeExamItems(exams, now)
+    .filter((exam) => exam.examStatusKey !== 'unscheduled' && isSameDate(exam.examDate, today))
+    .sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+}
+
+function formatExamDateText(date) {
+  if (!date) {
+    return '日期待定';
+  }
+
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function getExamStatusPriority(statusKey) {
+  if (Object.prototype.hasOwnProperty.call(EXAM_STATUS_PRIORITY, statusKey)) {
+    return EXAM_STATUS_PRIORITY[statusKey];
+  }
+
+  return 9;
+}
+
+function normalizeExamItems(exams, now = new Date()) {
   return (Array.isArray(exams) ? exams : [])
     .map((exam, index) => {
       const examDate = parseExamDate(exam.date || exam.dateTime || exam.time);
       const sortTime = getExamSortTime(exam);
       const displayTime = exam.time || [exam.date, exam.startTime].filter(Boolean).join(' ');
+      const seat = exam.seat ? `座位 ${exam.seat}` : '';
+      const examStatus = getExamStatus(exam, examDate, now);
+      const batchName = exam.batchName || '';
+      const teacher = examStatus.key === 'completed' ?
+        examStatus.text :
+        seat || examStatus.text;
 
       return Object.assign({}, exam, {
         id: exam.id || `exam-${index}`,
         type: 'exam',
         section: '考试',
+        batchName,
+        dateText: formatExamDateText(examDate),
         time: displayTime || '时间待定',
         sortTime,
         name: exam.name || exam.courseName || '未命名考试',
         location: exam.location || '地点待定',
-        teacher: exam.seat || exam.status || '已安排',
+        teacher,
+        examStatusKey: examStatus.key,
+        examStatusText: examStatus.text,
+        statusText: examStatus.text,
+        seatText: seat || '座位待定',
         icon: 'exam',
         tone: 'red',
         examDate
       });
     })
-    .filter((exam) => isSameDate(exam.examDate, today))
-    .sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+    .sort((a, b) => {
+      const statusCompare = getExamStatusPriority(a.examStatusKey) - getExamStatusPriority(b.examStatusKey);
+
+      if (statusCompare !== 0) {
+        return statusCompare;
+      }
+
+      const leftDate = a.examDate ? a.examDate.getTime() : Number.MAX_SAFE_INTEGER;
+      const rightDate = b.examDate ? b.examDate.getTime() : Number.MAX_SAFE_INTEGER;
+
+      if (leftDate !== rightDate) {
+        if (a.examStatusKey === 'completed' && b.examStatusKey === 'completed') {
+          return rightDate - leftDate;
+        }
+
+        return leftDate - rightDate;
+      }
+
+      const timeCompare = a.sortTime.localeCompare(b.sortTime);
+
+      if (timeCompare !== 0) {
+        return timeCompare;
+      }
+
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
 }
 
 function getTodayScheduleItems(courses, exams) {
@@ -375,6 +506,7 @@ function formatProfile(profile) {
       name: data.name || '未绑定',
       number: studentId,
       major,
+      className: data.className || '',
       level: gradeLevel || data.role || '',
       avatarUrl: data.avatarUrl || ''
     },
@@ -386,12 +518,6 @@ function formatProfile(profile) {
       { label: '邮箱', value: data.email || '暂无' },
       { label: '籍贯', value: data.nativePlace || '暂无' },
       { label: '入学时间', value: data.enrollmentDate || '暂无' }
-    ],
-    otherInfo: [
-      { label: '学生状态', value: data.studentStatus || data.role || '暂无' },
-      { label: '宿舍信息', value: data.dormitory || '暂无' },
-      { label: '辅导员', value: data.counselor || '暂无' },
-      { label: '班级', value: data.className || '暂无' }
     ]
   };
 }
@@ -426,5 +552,6 @@ module.exports = {
   getTodayExams,
   getTodayScheduleItems,
   getTodayText,
+  normalizeExamItems,
   normalizeCourses
 };

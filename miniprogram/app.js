@@ -18,10 +18,8 @@ App({
     });
 
     ensureBound()
-      .then(() => Promise.all([
-        loadSchedule(),
-        loadGrades()
-      ]))
+      .then(() => loadSchedule())
+      .then(() => loadGrades())
       .catch(() => {});
   }
 });

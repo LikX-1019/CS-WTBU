@@ -1,3 +1,4 @@
+const { callGetSchedule } = require('../../utils/api');
 const { getCustomNavStyle } = require('../../utils/system');
 
 const STORAGE_KEY = 'feedbackHistory';
@@ -28,6 +29,7 @@ Page({
     content: '',
     contentLength: 0,
     contact: '',
+    submitting: false,
     history: loadHistory()
   }),
 
@@ -66,7 +68,11 @@ Page({
     });
   },
 
-  submitFeedback() {
+  async submitFeedback() {
+    if (this.data.submitting) {
+      return;
+    }
+
     const content = this.data.content.trim();
 
     if (!content) {
@@ -77,26 +83,48 @@ Page({
       return;
     }
 
-    const now = new Date();
-    const item = {
-      type: this.data.typeOptions[this.data.typeIndex],
-      content,
-      contact: this.data.contact.trim(),
-      createdAt: now.toISOString(),
-      dateText: formatDate(now)
-    };
-    const history = [item, ...this.data.history].slice(0, 5);
+    this.setData({ submitting: true });
 
-    wx.setStorageSync(STORAGE_KEY, history);
-    this.setData({
-      content: '',
-      contentLength: 0,
-      contact: '',
-      history
-    });
-    wx.showToast({
-      title: '已提交',
-      icon: 'success'
-    });
+    try {
+      const now = new Date();
+      const type = this.data.typeOptions[this.data.typeIndex];
+      const data = await callGetSchedule({
+        action: 'submitFeedback',
+        type,
+        content,
+        contact: this.data.contact.trim()
+      }, '反馈提交失败');
+      const createdAt = data.createdAt || now.toISOString();
+      const date = new Date(createdAt);
+      const item = {
+        id: data.id || '',
+        type,
+        content,
+        contact: this.data.contact.trim(),
+        createdAt,
+        dateText: Number.isNaN(date.getTime()) ? formatDate(now) : formatDate(date),
+        statusText: data.statusText || '待处理'
+      };
+      const history = [item, ...this.data.history].slice(0, 5);
+
+      wx.setStorageSync(STORAGE_KEY, history);
+      this.setData({
+        content: '',
+        contentLength: 0,
+        contact: '',
+        history
+      });
+      wx.showToast({
+        title: '已提交',
+        icon: 'success'
+      });
+    } catch (error) {
+      wx.showToast({
+        title: error.messageText || error.message || '反馈提交失败',
+        icon: 'none'
+      });
+    } finally {
+      this.setData({ submitting: false });
+    }
   }
 });

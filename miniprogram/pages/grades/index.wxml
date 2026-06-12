@@ -15,6 +15,85 @@
       <view class="cap-icon"></view>
     </view>
 
+    <view class="exam-section">
+      <view class="filter">考试安排 <view class="exam-count">{{exams.length}}</view></view>
+      <view wx:if="{{exams.length === 0}}" class="soft-card exam-empty">{{examEmptyText}}</view>
+      <block wx:else>
+        <view
+          class="soft-card exam-stack {{examListExpanded ? 'exam-stack-open' : ''}}"
+          bindtap="toggleExamList"
+        >
+          <view class="exam-stack-main">
+            <view class="exam-stack-title">{{examSummary.title}}</view>
+            <view class="exam-stack-subtitle">{{examSummary.subtitle}}</view>
+          </view>
+          <view class="exam-stack-count">{{examSummary.total}}</view>
+          <view class="exam-stack-toggle"></view>
+        </view>
+
+        <view wx:if="{{examListExpanded}}" class="exam-list">
+          <view
+            wx:for="{{exams}}"
+            wx:key="id"
+            class="soft-card exam-row exam-row-{{item.examStatusKey}} {{item.expanded ? 'exam-row-expanded' : 'exam-row-collapsed'}}"
+            bindtap="toggleExam"
+            data-index="{{index}}"
+          >
+            <view class="exam-head">
+              <view class="exam-date">
+                <text>{{item.dateText}}</text>
+                <text wx:if="{{item.examStatusKey === 'upcoming'}}">{{item.time}}</text>
+                <text wx:elif="{{item.examStatusKey === 'completed'}}">{{item.batchName || '已考完'}}</text>
+                <text wx:else>待安排</text>
+              </view>
+              <view class="exam-main">
+                <view class="exam-title">{{item.name}}</view>
+                <view class="exam-meta">
+                  <text wx:if="{{item.batchName}}">{{item.batchName}}</text>
+                  <text wx:if="{{item.examStatusKey === 'upcoming'}}">{{item.location}}</text>
+                  <text wx:elif="{{item.examStatusKey === 'completed'}}">考试已结束</text>
+                  <text wx:else>时间地点待安排</text>
+                </view>
+              </view>
+              <view class="exam-status exam-status-{{item.examStatusKey}}">{{item.examStatusText}}</view>
+              <view class="exam-toggle {{item.expanded ? 'exam-toggle-open' : ''}}"></view>
+            </view>
+
+            <view wx:if="{{item.expanded}}" class="exam-detail">
+              <view class="exam-detail-grid">
+                <view wx:if="{{item.batchName}}" class="exam-detail-item">
+                  <text class="exam-detail-label">批次</text>
+                  <text class="exam-detail-value">{{item.batchName}}</text>
+                </view>
+                <view class="exam-detail-item">
+                  <text class="exam-detail-label">日期</text>
+                  <text class="exam-detail-value">{{item.dateText}}</text>
+                </view>
+                <view class="exam-detail-item">
+                  <text class="exam-detail-label">时间</text>
+                  <text class="exam-detail-value">{{item.time}}</text>
+                </view>
+                <view class="exam-detail-item">
+                  <text class="exam-detail-label">状态</text>
+                  <text class="exam-detail-value">{{item.examStatusText}}</text>
+                </view>
+                <block wx:if="{{item.examStatusKey === 'upcoming'}}">
+                  <view class="exam-detail-item">
+                    <text class="exam-detail-label">地点</text>
+                    <text class="exam-detail-value">{{item.location}}</text>
+                  </view>
+                  <view class="exam-detail-item">
+                    <text class="exam-detail-label">座位</text>
+                    <text class="exam-detail-value">{{item.seatText}}</text>
+                  </view>
+                </block>
+              </view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </view>
+
     <view class="filter">全部学期 <view class="chevron-down"></view></view>
 
     <view wx:if="{{loading}}" class="soft-card grade-state">正在加载成绩...</view>

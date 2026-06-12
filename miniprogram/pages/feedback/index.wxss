@@ -95,6 +95,11 @@
   line-height: 88rpx;
 }
 
+.submit-button[disabled] {
+  background: #93b4e8;
+  color: #eef4ff;
+}
+
 .history-card {
   padding: 2rpx 28rpx;
 }
@@ -138,6 +143,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-status {
+  margin-top: 8rpx;
+  color: #2f7bff;
+  font-size: 22rpx;
+  line-height: 1;
 }
 
 .history-row text {

@@ -20,7 +20,10 @@
       <view>
         <view class="profile-name">{{student.name}}</view>
         <view class="profile-line">学号：{{student.number}}</view>
-        <view class="profile-line">{{student.major}}</view>
+        <view class="profile-meta-row">
+          <text class="profile-meta">{{student.major}}</text>
+          <text wx:if="{{student.className}}" class="profile-meta">{{student.className}}</text>
+        </view>
         <view class="profile-line">{{student.level}}</view>
       </view>
       <view class="profile-arrow"></view>
@@ -35,25 +38,19 @@
       </view>
     </view>
 
-    <view class="soft-card info-panel">
-      <view class="panel-title">其他信息</view>
-      <view wx:for="{{otherInfo}}" wx:key="label" class="info-row">
-        <text>{{item.label}}</text>
-        <text class="info-value">{{item.value}}</text>
-      </view>
-    </view>
-
     <view class="soft-card action-panel">
       <view
         wx:for="{{actions}}"
         wx:key="label"
-        class="action-row"
+        class="action-row {{item.action === 'refreshEdu' && refreshingEdu ? 'action-row-loading' : ''}}"
         data-url="{{item.url}}"
+        data-action="{{item.action}}"
         bindtap="openAction"
       >
         <view class="action-icon action-{{item.icon}}"></view>
-        <text>{{item.label}}</text>
-        <view class="row-arrow"></view>
+        <text>{{item.action === 'refreshEdu' && refreshingEdu ? '正在更新数据库...' : item.label}}</text>
+        <view wx:if="{{item.action === 'refreshEdu' && refreshingEdu}}" class="row-spinner"></view>
+        <view wx:else class="row-arrow"></view>
       </view>
     </view>
   </view>
@@ -83,19 +80,24 @@
         <view class="edit-title">编辑个人信息</view>
         <view class="edit-close" bindtap="closeProfileEditor"></view>
       </view>
+      <view class="edit-subtitle">补充常用资料，方便在个人页集中查看。</view>
       <scroll-view scroll-y class="edit-scroll">
-        <view
-          wx:for="{{editRows}}"
-          wx:key="key"
-          class="edit-field"
-        >
-          <text>{{item.label}}</text>
-          <input
-            value="{{item.value}}"
-            placeholder="点击填写"
-            data-index="{{index}}"
-            bindinput="onProfileFieldInput"
-          />
+        <view class="edit-field-list">
+          <view
+            wx:for="{{editRows}}"
+            wx:key="key"
+            class="edit-field"
+          >
+            <text class="edit-label">{{item.label}}</text>
+            <input
+              class="edit-input"
+              value="{{item.value}}"
+              placeholder="点击填写"
+              placeholder-class="edit-placeholder"
+              data-index="{{index}}"
+              bindinput="onProfileFieldInput"
+            />
+          </view>
         </view>
       </scroll-view>
       <button

@@ -1,41 +1,98 @@
-<view class="page login-page">
-  <view class="title">绑定教务账号</view>
-  <view class="subtitle">微信登录后绑定一次，之后打开小程序会自动刷新课表</view>
-
-  <view class="panel form-panel">
-    <view class="field">
-      <text class="label">学号</text>
-      <input
-        class="input"
-        value="{{studentId}}"
-        placeholder="请输入学号"
-        type="text"
-        maxlength="32"
-        bindinput="onStudentIdInput"
-      />
-    </view>
-
-    <view class="field">
-      <text class="label">密码</text>
-      <input
-        class="input"
-        value="{{password}}"
-        placeholder="请输入教务系统密码"
-        password
-        maxlength="64"
-        bindinput="onPasswordInput"
-      />
-    </view>
-
-    <button
-      class="primary-button"
-      loading="{{binding}}"
-      disabled="{{binding}}"
-      bindtap="bindAccount"
-    >
-      {{binding ? '正在绑定' : '绑定并获取课表'}}
-    </button>
+<view class="mini-page login-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="nav-back" bindtap="goBack"></view>
+    <view class="custom-nav-title">绑定账号</view>
   </view>
 
-  <view class="note">为自动刷新课表，教务密码会加密保存在云数据库中，不保存明文。</view>
+  <view class="login-content">
+    <view class="login-hero">
+      <view class="hero-icon">
+        <view class="hero-icon-book"></view>
+      </view>
+      <view class="title">绑定教务账号</view>
+      <view class="subtitle">绑定后自动同步课表、考试和成绩，12小时内优先读取已缓存的数据。</view>
+    </view>
+
+    <view class="panel form-panel">
+      <view class="field school-field">
+        <view class="label-row">
+          <text class="label">学校</text>
+          <text class="field-hint">教务系统来源</text>
+        </view>
+        <view class="school-select">
+          <input
+            class="input school-input"
+            value="{{schoolSearchText}}"
+            placeholder="搜索或选择学校"
+            type="text"
+            maxlength="40"
+            bindfocus="showSchoolDropdown"
+            bindtap="showSchoolDropdown"
+            bindinput="onSchoolSearchInput"
+          />
+          <view class="school-arrow {{schoolDropdownVisible ? 'school-arrow-open' : ''}}"></view>
+        </view>
+        <view wx:if="{{schoolDropdownVisible}}" class="school-options">
+          <view
+            wx:for="{{filteredSchools}}"
+            wx:key="id"
+            class="school-option {{item.id === selectedSchoolId ? 'school-option-active' : ''}}"
+            data-school-id="{{item.id}}"
+            bindtap="onSchoolSelect"
+          >
+            <text class="school-name">{{item.name}}</text>
+            <view wx:if="{{item.id === selectedSchoolId}}" class="school-check"></view>
+          </view>
+          <view wx:if="{{filteredSchools.length === 0}}" class="school-empty">暂无匹配学校</view>
+        </view>
+      </view>
+
+      <view class="field">
+        <view class="label-row">
+          <text class="label">学号</text>
+          <text class="field-hint">教务系统登录账号</text>
+        </view>
+        <input
+          class="input"
+          value="{{studentId}}"
+          placeholder="请输入学号"
+          type="text"
+          maxlength="32"
+          bindinput="onStudentIdInput"
+        />
+      </view>
+
+      <view class="field">
+        <view class="label-row">
+          <text class="label">密码</text>
+          <text class="field-hint">仅用于更新教务数据</text>
+        </view>
+        <input
+          class="input"
+          value="{{password}}"
+          placeholder="请输入教务系统密码"
+          password
+          maxlength="64"
+          bindinput="onPasswordInput"
+        />
+      </view>
+
+      <button
+        class="primary-button login-button"
+        loading="{{binding}}"
+        disabled="{{binding}}"
+        bindtap="bindAccount"
+      >
+        {{binding ? '正在绑定...' : '绑定并获取数据'}}
+      </button>
+    </view>
+
+    <view class="security-card">
+      <view class="security-icon"></view>
+      <view>
+        <view class="security-title">安全说明</view>
+        <view class="note">教务密码会加密保存到云数据库中，不保存明文；你也可以在个人页随时解除绑定。</view>
+      </view>
+    </view>
+  </view>
 </view>

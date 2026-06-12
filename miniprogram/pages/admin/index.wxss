@@ -1,0 +1,264 @@
+.sub-page {
+  padding-bottom: 48rpx;
+}
+
+.nav-back {
+  position: absolute;
+  left: 32rpx;
+  bottom: 28rpx;
+  width: 44rpx;
+  height: 44rpx;
+  color: #101828;
+}
+
+.nav-back::before {
+  content: "";
+  position: absolute;
+  left: 15rpx;
+  top: 10rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(45deg);
+}
+
+.admin-content {
+  padding-bottom: 28rpx;
+}
+
+.admin-hero {
+  min-height: 136rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 28rpx 30rpx;
+  margin-bottom: 20rpx;
+  border-radius: 18rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #172554, #2563eb 64%, #0f766e);
+  box-shadow: 0 20rpx 44rpx rgba(37, 99, 235, 0.16);
+}
+
+.admin-hero > view {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-title {
+  margin-bottom: 14rpx;
+  font-size: 38rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.hero-subtitle {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.refresh-button {
+  flex: 0 0 112rpx;
+  height: 64rpx;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 64rpx;
+}
+
+.refresh-button[disabled] {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.state-card {
+  min-height: 88rpx;
+  padding: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667085;
+  font-size: 26rpx;
+  text-align: center;
+  margin-bottom: 20rpx;
+}
+
+.state-error {
+  color: #e11d48;
+  background: #fff1f2;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  margin-bottom: 22rpx;
+}
+
+.stat-card {
+  min-height: 128rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 22rpx 18rpx;
+  text-align: center;
+}
+
+.stat-value {
+  margin-bottom: 12rpx;
+  color: #101828;
+  font-size: 38rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stat-label {
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.2;
+}
+
+.segment {
+  height: 76rpx;
+  display: flex;
+  padding: 6rpx;
+  margin-bottom: 20rpx;
+  border: 1rpx solid #dfe5ee;
+  border-radius: 14rpx;
+  background: #edf2f7;
+}
+
+.segment-item {
+  flex: 1;
+  height: 62rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10rpx;
+  color: #667085;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.segment-active {
+  color: #1d4ed8;
+  background: #ffffff;
+  box-shadow: 0 8rpx 18rpx rgba(16, 24, 40, 0.06);
+}
+
+.list-panel {
+  min-height: 260rpx;
+}
+
+.user-card,
+.feedback-item {
+  padding: 26rpx 28rpx;
+  margin-bottom: 16rpx;
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-bottom: 22rpx;
+}
+
+.card-top > view:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  margin-bottom: 12rpx;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.item-subtitle {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.status-pill,
+.status-picker {
+  min-width: 104rpx;
+  height: 52rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  color: #1d4ed8;
+  background: #eef4ff;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 52rpx;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.status-processing {
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+.status-resolved {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.status-closed {
+  color: #475467;
+  background: #eef0f4;
+}
+
+.detail-row {
+  min-height: 58rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  border-top: 1rpx solid #f0f2f5;
+  color: #667085;
+  font-size: 24rpx;
+}
+
+.detail-row text:first-child {
+  flex: 0 0 128rpx;
+}
+
+.detail-row text:last-child {
+  flex: 1;
+  color: #101828;
+  line-height: 1.35;
+  text-align: right;
+  overflow-wrap: break-word;
+}
+
+.feedback-content {
+  color: #101828;
+  font-size: 27rpx;
+  line-height: 1.55;
+  overflow-wrap: break-word;
+}
+
+.contact-row {
+  margin-top: 18rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f0f2f5;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.empty-card {
+  min-height: 144rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #98a2b3;
+  font-size: 26rpx;
+}

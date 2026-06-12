@@ -37,7 +37,8 @@ async function ensureBound(options = {}) {
       if (data.profile) {
         setProfile({
           profile: data.profile,
-          studentId: data.studentId || ''
+          studentId: data.studentId || '',
+          isAdmin: Boolean(data.isAdmin)
         });
       }
 

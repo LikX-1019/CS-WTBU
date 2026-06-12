@@ -146,6 +146,20 @@ async function saveProfile(profile) {
   return data;
 }
 
+async function refreshEduCache() {
+  const data = await callGetSchedule({ action: 'refreshAll' }, '教务系统更新失败');
+
+  if (data.schedule) {
+    setSchedule(data.schedule);
+  }
+
+  if (data.grades) {
+    setGrades(data.grades);
+  }
+
+  return data;
+}
+
 function setSchedule(data) {
   store.schedule = data || null;
 
@@ -194,6 +208,7 @@ module.exports = {
   loadGrades,
   loadProfile,
   loadSchedule,
+  refreshEduCache,
   saveProfile,
   setGrades,
   setProfile,

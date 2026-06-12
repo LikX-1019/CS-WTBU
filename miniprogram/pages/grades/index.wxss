@@ -92,6 +92,241 @@
   margin: 0 0 20rpx 4rpx;
 }
 
+.exam-section {
+  margin-bottom: 32rpx;
+}
+
+.exam-count {
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: #eef4ff;
+  color: #2f7bff;
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.exam-stack {
+  min-height: 124rpx;
+  padding: 26rpx 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  position: relative;
+}
+
+.exam-stack::after {
+  content: "";
+  position: absolute;
+  left: 26rpx;
+  right: 26rpx;
+  bottom: -8rpx;
+  height: 12rpx;
+  border-radius: 0 0 14rpx 14rpx;
+  background: rgba(47, 123, 255, 0.08);
+}
+
+.exam-stack-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.exam-stack-title {
+  margin-bottom: 14rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.exam-stack-subtitle {
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.exam-stack-count {
+  flex: 0 0 auto;
+  min-width: 48rpx;
+  height: 48rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: #eef4ff;
+  color: #2f7bff;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+.exam-stack-toggle {
+  flex: 0 0 auto;
+  width: 18rpx;
+  height: 18rpx;
+  border-right: 3rpx solid #98a2b3;
+  border-bottom: 3rpx solid #98a2b3;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.exam-stack-open .exam-stack-toggle {
+  transform: rotate(225deg);
+}
+
+.exam-list {
+  margin-top: 18rpx;
+}
+
+.exam-row {
+  margin-bottom: 16rpx;
+  overflow: hidden;
+}
+
+.exam-row-completed {
+  background: #fafafa;
+}
+
+.exam-row-completed .exam-title,
+.exam-row-completed .exam-date {
+  color: #667085;
+}
+
+.exam-row-unscheduled {
+  background: #fbfcfe;
+}
+
+.exam-head {
+  min-height: 132rpx;
+  padding: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.exam-date {
+  flex: 0 0 132rpx;
+  min-width: 0;
+  color: #2f7bff;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1.25;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.exam-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.exam-title {
+  margin-bottom: 14rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.exam-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx 18rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.25;
+}
+
+.exam-meta text {
+  max-width: 100%;
+}
+
+.exam-status {
+  flex: 0 0 auto;
+  min-width: 64rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+  text-align: right;
+}
+
+.exam-status-upcoming {
+  color: #2f7bff;
+}
+
+.exam-status-completed {
+  color: #667085;
+}
+
+.exam-status-unscheduled {
+  color: #98a2b3;
+}
+
+.exam-toggle {
+  flex: 0 0 auto;
+  width: 18rpx;
+  height: 18rpx;
+  border-right: 3rpx solid #98a2b3;
+  border-bottom: 3rpx solid #98a2b3;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.exam-toggle-open {
+  transform: rotate(225deg);
+}
+
+.exam-detail {
+  margin: 0 24rpx 24rpx 176rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid #eef0f4;
+}
+
+.exam-detail-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx 20rpx;
+}
+
+.exam-detail-item {
+  flex: 1 1 220rpx;
+  min-width: 0;
+}
+
+.exam-detail-label {
+  display: block;
+  margin-bottom: 8rpx;
+  color: #98a2b3;
+  font-size: 21rpx;
+  line-height: 1;
+}
+
+.exam-detail-value {
+  display: block;
+  color: #344054;
+  font-size: 24rpx;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.exam-row-completed .exam-detail-value,
+.exam-row-unscheduled .exam-detail-value {
+  color: #667085;
+}
+
+.exam-empty {
+  min-height: 100rpx;
+  padding: 28rpx;
+  color: #98a2b3;
+  font-size: 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .chevron-down {
   width: 16rpx;
   height: 16rpx;

@@ -4,6 +4,7 @@
     "pages/schedule/index",
     "pages/grades/index",
     "pages/profile/index",
+    "pages/admin/index",
     "pages/settings/index",
     "pages/about/index",
     "pages/feedback/index",

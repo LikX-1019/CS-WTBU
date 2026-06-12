@@ -1,0 +1,93 @@
+<view class="mini-page sub-page admin-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="nav-back" bindtap="goBack"></view>
+    <view class="custom-nav-title">管理员</view>
+  </view>
+
+  <view class="content admin-content">
+    <view class="admin-hero">
+      <view>
+        <view class="hero-title">后台总览</view>
+        <view class="hero-subtitle">{{adminText || '仅管理员可查看数据'}}</view>
+      </view>
+      <button class="refresh-button" loading="{{loading}}" disabled="{{loading}}" bindtap="refreshDashboard">
+        刷新
+      </button>
+    </view>
+
+    <view wx:if="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
+    <view wx:elif="{{loading && users.length === 0 && feedback.length === 0}}" class="soft-card state-card">
+      正在读取后台数据...
+    </view>
+
+    <view wx:if="{{!errorText}}" class="stat-grid">
+      <view wx:for="{{stats}}" wx:key="key" class="soft-card stat-card">
+        <view class="stat-value">{{item.value}}</view>
+        <view class="stat-label">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!errorText}}" class="segment">
+      <view
+        wx:for="{{tabs}}"
+        wx:key="key"
+        class="segment-item {{activeTab === item.key ? 'segment-active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="switchTab"
+      >
+        {{item.label}}
+      </view>
+    </view>
+
+    <view wx:if="{{!errorText && activeTab === 'users'}}" class="list-panel">
+      <view wx:if="{{users.length === 0 && !loading}}" class="soft-card empty-card">暂无绑定用户</view>
+      <view wx:for="{{users}}" wx:key="id" class="soft-card user-card">
+        <view class="card-top">
+          <view>
+            <view class="item-title">{{item.name}}</view>
+            <view class="item-subtitle">{{item.studentId}} · {{item.schoolName || '未知学校'}}</view>
+          </view>
+          <view class="status-pill">已绑定</view>
+        </view>
+        <view class="detail-row">
+          <text>专业班级</text>
+          <text>{{item.majorText}}</text>
+        </view>
+        <view class="detail-row">
+          <text>缓存概况</text>
+          <text>{{item.cacheText}}</text>
+        </view>
+        <view class="detail-row">
+          <text>最近更新</text>
+          <text>{{item.lastFetchedText || item.updatedText || '暂无记录'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{!errorText && activeTab === 'feedback'}}" class="list-panel">
+      <view wx:if="{{feedback.length === 0 && !loading}}" class="soft-card empty-card">暂无反馈记录</view>
+      <view wx:for="{{feedback}}" wx:key="id" class="soft-card feedback-item">
+        <view class="card-top">
+          <view>
+            <view class="item-title">{{item.type}}</view>
+            <view class="item-subtitle">{{item.userText || '匿名用户'}} · {{item.createdText || '刚刚'}}</view>
+          </view>
+          <picker
+            mode="selector"
+            range="{{statusOptions}}"
+            value="{{item.statusIndex || 0}}"
+            data-id="{{item.id}}"
+            disabled="{{updatingId === item.id}}"
+            bindchange="onStatusChange"
+          >
+            <view class="status-picker status-{{item.status}}">
+              {{updatingId === item.id ? '更新中' : item.statusText}}
+            </view>
+          </picker>
+        </view>
+        <view class="feedback-content">{{item.content}}</view>
+        <view wx:if="{{item.contact}}" class="contact-row">联系方式：{{item.contact}}</view>
+      </view>
+    </view>
+  </view>
+</view>

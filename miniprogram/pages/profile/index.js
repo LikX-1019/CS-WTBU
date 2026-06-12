@@ -1,6 +1,6 @@
 const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
-const { loadProfile, saveProfile } = require('../../utils/dataStore');
+const { loadProfile, refreshEduCache, saveProfile } = require('../../utils/dataStore');
 const { formatProfile, getEmptyProfile } = require('../../utils/schedule');
 const { getCustomNavStyle } = require('../../utils/system');
 
@@ -32,6 +32,22 @@ function buildEditRows(profile) {
   }));
 }
 
+function buildActions(isAdmin) {
+  const actions = [
+    { label: '从教务系统更新数据库', icon: 'refresh', action: 'refreshEdu' }
+  ];
+
+  if (isAdmin) {
+    actions.push({ label: '管理员后台', icon: 'admin', url: '/pages/admin/index' });
+  }
+
+  return actions.concat([
+    { label: '设置', icon: 'settings', url: '/pages/settings/index' },
+    { label: '关于我们', icon: 'about', url: '/pages/about/index' },
+    { label: '意见反馈', icon: 'feedback', url: '/pages/feedback/index' }
+  ]);
+}
+
 Page({
   data: Object.assign({}, getCustomNavStyle(), formatProfile(getEmptyProfile()), {
     loading: false,
@@ -40,12 +56,10 @@ Page({
     editVisible: false,
     savingProfile: false,
     savingAvatar: false,
+    refreshingEdu: false,
     editRows: [],
-    actions: [
-      { label: '设置', icon: 'settings', url: '/pages/settings/index' },
-      { label: '关于我们', icon: 'about', url: '/pages/about/index' },
-      { label: '意见反馈', icon: 'feedback', url: '/pages/feedback/index' }
-    ]
+    isAdmin: false,
+    actions: buildActions(false)
   }),
 
   onShow() {
@@ -72,7 +86,7 @@ Page({
       await ensureBound();
       const data = await loadProfile(options);
 
-      this.setProfileData(data.profile);
+      this.setProfileData(data.profile, data.isAdmin);
     } catch (error) {
       if (error.code === 'NO_BINDING') {
         redirectToLogin();
@@ -87,11 +101,14 @@ Page({
     }
   },
 
-  setProfileData(profile) {
+  setProfileData(profile, isAdmin) {
     const rawProfile = Object.assign({}, getEmptyProfile(), profile || {});
+    const adminVisible = Boolean(isAdmin);
 
     this.setData(Object.assign({}, formatProfile(rawProfile), {
-      rawProfile
+      rawProfile,
+      isAdmin: adminVisible,
+      actions: buildActions(adminVisible)
     }));
   },
 
@@ -115,13 +132,67 @@ Page({
   noop() {},
 
   openAction(event) {
+    const action = event.currentTarget.dataset.action;
     const url = event.currentTarget.dataset.url;
+
+    if (action === 'refreshEdu') {
+      this.confirmRefreshEduCache();
+      return;
+    }
 
     if (!url) {
       return;
     }
 
     wx.navigateTo({ url });
+  },
+
+  confirmRefreshEduCache() {
+    if (this.data.refreshingEdu) {
+      return;
+    }
+
+    wx.showModal({
+      title: '更新数据库',
+      content: '将从教务系统重新获取课表、考试和成绩，并重置12小时缓存时间。',
+      confirmText: '更新',
+      confirmColor: '#2f7bff',
+      success: (result) => {
+        if (result.confirm) {
+          this.refreshEduCache();
+        }
+      }
+    });
+  },
+
+  async refreshEduCache() {
+    if (this.data.refreshingEdu) {
+      return;
+    }
+
+    this.setData({ refreshingEdu: true });
+
+    try {
+      await ensureBound();
+      const data = await refreshEduCache();
+
+      wx.showToast({
+        title: data.refreshedAt ? '数据库已更新' : '更新完成',
+        icon: 'success'
+      });
+    } catch (error) {
+      if (error.code === 'NO_BINDING') {
+        redirectToLogin();
+        return;
+      }
+
+      wx.showToast({
+        title: error.messageText || error.message || '教务系统更新失败',
+        icon: 'none'
+      });
+    } finally {
+      this.setData({ refreshingEdu: false });
+    }
   },
 
   async onChooseAvatar(event) {
@@ -145,7 +216,7 @@ Page({
         avatarUrl: uploadResult.fileID
       }));
 
-      this.setProfileData(data.profile);
+      this.setProfileData(data.profile, data.isAdmin);
       wx.showToast({
         title: '头像已更新',
         icon: 'success'
@@ -193,7 +264,7 @@ Page({
 
       const data = await saveProfile(profile);
 
-      this.setProfileData(data.profile);
+      this.setProfileData(data.profile, data.isAdmin);
       this.setData({ editVisible: false });
       wx.showToast({
         title: '已保存',

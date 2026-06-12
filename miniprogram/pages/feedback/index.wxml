@@ -39,7 +39,14 @@
         />
       </view>
 
-      <button class="submit-button" bindtap="submitFeedback">提交反馈</button>
+      <button
+        class="submit-button"
+        loading="{{submitting}}"
+        disabled="{{submitting}}"
+        bindtap="submitFeedback"
+      >
+        {{submitting ? '提交中...' : '提交反馈'}}
+      </button>
     </view>
 
     <view wx:if="{{history.length > 0}}" class="soft-card history-card">
@@ -48,6 +55,7 @@
         <view>
           <view class="history-type">{{item.type}}</view>
           <view class="history-content">{{item.content}}</view>
+          <view wx:if="{{item.statusText}}" class="history-status">{{item.statusText}}</view>
         </view>
         <text>{{item.dateText}}</text>
       </view>
