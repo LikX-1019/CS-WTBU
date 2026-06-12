@@ -1,0 +1,41 @@
+<view class="page login-page">
+  <view class="title">绑定教务账号</view>
+  <view class="subtitle">微信登录后绑定一次，之后打开小程序会自动刷新课表</view>
+
+  <view class="panel form-panel">
+    <view class="field">
+      <text class="label">学号</text>
+      <input
+        class="input"
+        value="{{studentId}}"
+        placeholder="请输入学号"
+        type="text"
+        maxlength="32"
+        bindinput="onStudentIdInput"
+      />
+    </view>
+
+    <view class="field">
+      <text class="label">密码</text>
+      <input
+        class="input"
+        value="{{password}}"
+        placeholder="请输入教务系统密码"
+        password
+        maxlength="64"
+        bindinput="onPasswordInput"
+      />
+    </view>
+
+    <button
+      class="primary-button"
+      loading="{{binding}}"
+      disabled="{{binding}}"
+      bindtap="bindAccount"
+    >
+      {{binding ? '正在绑定' : '绑定并获取课表'}}
+    </button>
+  </view>
+
+  <view class="note">为自动刷新课表，教务密码会加密保存在云数据库中，不保存明文。</view>
+</view>

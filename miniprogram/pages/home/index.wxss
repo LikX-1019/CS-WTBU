@@ -1,0 +1,334 @@
+.date-row {
+  height: 132rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid #e9edf3;
+  margin-bottom: 20rpx;
+}
+
+.date-title {
+  margin-bottom: 14rpx;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.date-week {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.calendar-mini {
+  flex: 0 0 48rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border: 3rpx solid #101828;
+  border-radius: 10rpx;
+  position: relative;
+}
+
+.calendar-mini::before {
+  content: "";
+  position: absolute;
+  left: 8rpx;
+  right: 8rpx;
+  top: 12rpx;
+  border-top: 3rpx solid #101828;
+}
+
+.calendar-mini::after {
+  content: "";
+  position: absolute;
+  left: 14rpx;
+  top: -7rpx;
+  width: 18rpx;
+  height: 12rpx;
+  border-left: 3rpx solid #101828;
+  border-right: 3rpx solid #101828;
+}
+
+.section-head {
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 34rpx 0 16rpx;
+  color: #667085;
+  font-size: 26rpx;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  color: #101828;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.section-title::before {
+  content: "";
+  width: 8rpx;
+  height: 32rpx;
+  border-radius: 999rpx;
+  background: #2f7bff;
+}
+
+.course-card {
+  height: 208rpx;
+  padding: 28rpx 30rpx 24rpx;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.exam-card {
+  border-color: #ffc1ca;
+  background: #fff8f9;
+}
+
+.course-card > view:first-child {
+  flex: 1;
+  min-width: 0;
+  padding-right: 24rpx;
+}
+
+.course-meta {
+  color: #4b5563;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.course-title {
+  margin: 24rpx 0 20rpx;
+  color: #101828;
+  font-size: 32rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.course-place,
+.teacher {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.course-place {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.pin {
+  width: 24rpx;
+  height: 24rpx;
+  position: relative;
+  color: #667085;
+}
+
+.pin::before {
+  content: "";
+  position: absolute;
+  left: 6rpx;
+  top: 2rpx;
+  width: 12rpx;
+  height: 16rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 12rpx 12rpx 14rpx 14rpx;
+  transform: rotate(-45deg);
+}
+
+.pin::after {
+  content: "";
+  position: absolute;
+  left: 10rpx;
+  top: 8rpx;
+  width: 4rpx;
+  height: 4rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.course-side {
+  flex: 0 0 100rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.class-icon {
+  width: 92rpx;
+  height: 92rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16rpx;
+}
+
+.class-icon-blue {
+  color: #1f66f2;
+  background: #e8f0ff;
+}
+
+.class-icon-green {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.class-icon-purple {
+  color: #7c3aed;
+  background: #f3e8ff;
+}
+
+.class-icon-red {
+  color: #f43f5e;
+  background: #ffe4e9;
+}
+
+.card-symbol {
+  width: 52rpx;
+  height: 52rpx;
+  position: relative;
+}
+
+.symbol-book::before {
+  content: "";
+  position: absolute;
+  inset: 4rpx 8rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 6rpx;
+}
+
+.symbol-book::after {
+  content: "";
+  position: absolute;
+  left: 14rpx;
+  right: 10rpx;
+  bottom: 10rpx;
+  border-top: 4rpx solid currentColor;
+}
+
+.symbol-flask::before {
+  content: "";
+  position: absolute;
+  left: 14rpx;
+  top: 5rpx;
+  width: 22rpx;
+  height: 34rpx;
+  border: 4rpx solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 18rpx 18rpx;
+}
+
+.symbol-flask::after {
+  content: "";
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  bottom: 9rpx;
+  height: 14rpx;
+  border-radius: 0 0 14rpx 14rpx;
+  background: currentColor;
+  opacity: 0.25;
+}
+
+.symbol-code::before {
+  content: "</>";
+  position: absolute;
+  left: 0;
+  top: 11rpx;
+  width: 52rpx;
+  text-align: center;
+  color: currentColor;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.symbol-exam::before {
+  content: "";
+  position: absolute;
+  inset: 4rpx 9rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 5rpx;
+}
+
+.symbol-exam::after {
+  content: "";
+  position: absolute;
+  left: 17rpx;
+  top: 17rpx;
+  width: 18rpx;
+  height: 10rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.exam-time {
+  color: #f43f5e;
+  font-size: 22rpx;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.empty-card {
+  height: 160rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  color: #98a2b3;
+  font-size: 28rpx;
+}
+
+.empty-icon {
+  width: 50rpx;
+  height: 50rpx;
+  border: 3rpx solid #a5adb9;
+  border-radius: 8rpx;
+  position: relative;
+}
+
+.empty-icon::before {
+  content: "";
+  position: absolute;
+  left: 9rpx;
+  right: 9rpx;
+  top: 12rpx;
+  border-top: 3rpx solid #a5adb9;
+}
+
+.empty-icon::after {
+  content: "";
+  position: absolute;
+  left: 14rpx;
+  top: 20rpx;
+  width: 18rpx;
+  height: 10rpx;
+  border-left: 3rpx solid #a5adb9;
+  border-bottom: 3rpx solid #a5adb9;
+  transform: rotate(-45deg);
+}
+
+.state-card {
+  min-height: 88rpx;
+  padding: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667085;
+  font-size: 26rpx;
+  text-align: center;
+}
+
+.state-error {
+  color: #e11d48;
+  background: #fff1f2;
+}

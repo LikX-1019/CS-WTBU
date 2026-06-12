@@ -1,0 +1,56 @@
+<view class="mini-page sub-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="nav-back" bindtap="goBack"></view>
+    <view class="custom-nav-title">意见反馈</view>
+  </view>
+
+  <view class="content">
+    <view class="soft-card feedback-card">
+      <view class="field">
+        <text class="label">反馈类型</text>
+        <picker mode="selector" range="{{typeOptions}}" value="{{typeIndex}}" bindchange="onTypeChange">
+          <view class="picker-field">
+            <text>{{typeText}}</text>
+            <view class="chevron-down"></view>
+          </view>
+        </picker>
+      </view>
+
+      <view class="field">
+        <text class="label">反馈内容</text>
+        <textarea
+          class="textarea"
+          value="{{content}}"
+          maxlength="500"
+          placeholder="请描述遇到的问题或建议"
+          bindinput="onContentInput"
+        />
+        <view class="counter">{{contentLength}}/500</view>
+      </view>
+
+      <view class="field">
+        <text class="label">联系方式</text>
+        <input
+          class="input"
+          value="{{contact}}"
+          maxlength="80"
+          placeholder="选填，便于后续联系"
+          bindinput="onContactInput"
+        />
+      </view>
+
+      <button class="submit-button" bindtap="submitFeedback">提交反馈</button>
+    </view>
+
+    <view wx:if="{{history.length > 0}}" class="soft-card history-card">
+      <view class="history-title">最近提交</view>
+      <view wx:for="{{history}}" wx:key="createdAt" class="history-row">
+        <view>
+          <view class="history-type">{{item.type}}</view>
+          <view class="history-content">{{item.content}}</view>
+        </view>
+        <text>{{item.dateText}}</text>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,208 @@
+.score-summary {
+  height: 240rpx;
+  padding: 36rpx 28rpx 28rpx;
+  border: 1rpx solid #d9e8ff;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #eef6ff, #e8f2ff 55%, #dcecff);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 34rpx;
+}
+
+.score-summary::before {
+  content: "";
+  position: absolute;
+  right: -20rpx;
+  top: -22rpx;
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 50%;
+  background: rgba(47, 123, 255, 0.1);
+}
+
+.score-summary-title {
+  margin-bottom: 40rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.metric {
+  flex: 1;
+}
+
+.metric-value {
+  margin-bottom: 22rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.metric-label {
+  color: #344054;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.cap-icon {
+  position: absolute;
+  right: 28rpx;
+  top: 28rpx;
+  width: 88rpx;
+  height: 48rpx;
+  opacity: 0.14;
+}
+
+.cap-icon::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12rpx;
+  width: 78rpx;
+  height: 30rpx;
+  background: #2f7bff;
+  transform: skewX(-25deg);
+}
+
+.cap-icon::after {
+  content: "";
+  position: absolute;
+  left: 34rpx;
+  top: 34rpx;
+  width: 24rpx;
+  height: 26rpx;
+  border-left: 4rpx solid #2f7bff;
+  border-bottom: 4rpx solid #2f7bff;
+}
+
+.filter {
+  height: 50rpx;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  color: #4b5563;
+  font-size: 26rpx;
+  margin: 0 0 20rpx 4rpx;
+}
+
+.chevron-down {
+  width: 16rpx;
+  height: 16rpx;
+  border-right: 3rpx solid currentColor;
+  border-bottom: 3rpx solid currentColor;
+  transform: rotate(45deg);
+  margin-top: -6rpx;
+}
+
+.semester-card {
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+.semester-top {
+  min-height: 114rpx;
+  padding: 28rpx 24rpx 20rpx;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.semester-top > view:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.semester-title {
+  margin-bottom: 16rpx;
+  color: #101828;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.semester-stats {
+  display: flex;
+  gap: 28rpx;
+  color: #4b5563;
+  font-size: 24rpx;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.collapse-icon {
+  width: 18rpx;
+  height: 18rpx;
+  border-left: 3rpx solid #101828;
+  border-top: 3rpx solid #101828;
+  transform: rotate(45deg);
+  margin: 8rpx auto 0;
+}
+
+.semester-collapsed .collapse-icon {
+  border-left: 0;
+  border-top: 0;
+  border-right: 3rpx solid #101828;
+  border-bottom: 3rpx solid #101828;
+  margin-top: 0;
+}
+
+.grade-table {
+  border-top: 1rpx solid #eef0f4;
+}
+
+.grade-row {
+  min-height: 68rpx;
+  display: flex;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.grade-cell {
+  flex: 1;
+  min-height: 68rpx;
+  padding: 20rpx 22rpx;
+  color: #111827;
+  font-size: 22rpx;
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+}
+
+.grade-name {
+  flex: 1.75;
+}
+
+.grade-head {
+  color: #667085;
+}
+
+.grade-num {
+  justify-content: center;
+}
+
+.grade-score-low {
+  color: #e11d48;
+  font-weight: 800;
+}
+
+.grade-state {
+  min-height: 180rpx;
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667085;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.grade-error {
+  color: #e11d48;
+  background: #fff1f2;
+}

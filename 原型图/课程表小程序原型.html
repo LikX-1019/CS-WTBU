@@ -1,0 +1,1350 @@
+<!doctype html>
+<!-- Single reference-matched prototype for the course schedule mini program. -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课程表微信小程序原型</title>
+  <style>
+    :root {
+      --blue: #2f7bff;
+      --blue-deep: #1f66f2;
+      --text: #101828;
+      --muted: #667085;
+      --subtle: #98a2b3;
+      --line: #e5e7eb;
+      --soft-line: #eef0f4;
+      --page: #f7f8fb;
+      --card: #ffffff;
+      --green: #22c55e;
+      --purple: #7c3aed;
+      --red: #f43f5e;
+      --yellow: #f59e0b;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #fbfbfc;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .prototype-board {
+      width: min(1580px, calc(100vw - 24px));
+      margin: 0 auto;
+      padding: 18px 0 26px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 30px;
+      align-items: start;
+    }
+
+    .phone-set {
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+    }
+
+    .phone {
+      width: 375px;
+      height: 812px;
+      overflow: hidden;
+      border: 1px solid #d7dce5;
+      border-radius: 22px;
+      background: var(--page);
+      box-shadow: 0 14px 36px rgba(16, 24, 40, .06);
+      position: relative;
+    }
+
+    .caption {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .status-bar {
+      height: 44px;
+      padding: 13px 24px 0 26px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      background: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .system-icons {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 16px;
+    }
+
+    .signal {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 13px;
+    }
+
+    .signal i {
+      width: 3px;
+      border-radius: 2px;
+      background: #111827;
+      display: block;
+    }
+
+    .signal i:nth-child(1) {
+      height: 5px;
+    }
+
+    .signal i:nth-child(2) {
+      height: 7px;
+    }
+
+    .signal i:nth-child(3) {
+      height: 10px;
+    }
+
+    .signal i:nth-child(4) {
+      height: 12px;
+    }
+
+    .wifi {
+      width: 15px;
+      height: 12px;
+      position: relative;
+    }
+
+    .wifi::before,
+    .wifi::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      border: 2px solid #111827;
+      border-color: #111827 transparent transparent transparent;
+      border-radius: 50%;
+      transform: translateX(-50%);
+    }
+
+    .wifi::before {
+      top: 1px;
+      width: 14px;
+      height: 14px;
+    }
+
+    .wifi::after {
+      top: 5px;
+      width: 8px;
+      height: 8px;
+    }
+
+    .battery {
+      width: 22px;
+      height: 11px;
+      border: 1.7px solid #111827;
+      border-radius: 3px;
+      position: relative;
+      padding: 1.5px;
+    }
+
+    .battery::before {
+      content: "";
+      display: block;
+      width: 15px;
+      height: 100%;
+      border-radius: 1px;
+      background: #111827;
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      right: -3.5px;
+      top: 3px;
+      width: 2px;
+      height: 5px;
+      border-radius: 0 2px 2px 0;
+      background: #111827;
+    }
+
+    .nav {
+      height: 64px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      position: relative;
+      border-bottom: 1px solid #f0f1f4;
+    }
+
+    .nav-title {
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .wechat-menu {
+      position: absolute;
+      top: 17px;
+      right: 9px;
+      width: 83px;
+      height: 32px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      background: rgba(255, 255, 255, .86);
+    }
+
+    .menu-dots {
+      display: flex;
+      gap: 4px;
+      margin-left: 4px;
+    }
+
+    .menu-dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #101828;
+    }
+
+    .mini-ring {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #101828;
+      border-radius: 50%;
+      position: relative;
+      margin-right: 4px;
+    }
+
+    .mini-ring::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: #101828;
+    }
+
+    .content {
+      height: calc(100% - 44px - 64px - 72px);
+      overflow: hidden;
+      padding: 14px 16px 0;
+      background: var(--page);
+    }
+
+    .tabbar {
+      height: 72px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: center;
+      border-top: 1px solid #e8eaee;
+      background: rgba(255, 255, 255, .96);
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    .tab {
+      height: 56px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 5px;
+      color: #667085;
+      font-size: 11px;
+    }
+
+    .tab.active {
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .tab svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .tab.active .fill-icon {
+      fill: currentColor;
+      stroke: currentColor;
+    }
+
+    .section-head {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 17px 0 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section-head strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .section-head strong::before {
+      content: "";
+      width: 4px;
+      height: 16px;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .soft-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      box-shadow: 0 6px 18px rgba(16, 24, 40, .025);
+    }
+
+    .date-row {
+      height: 66px;
+      display: grid;
+      grid-template-columns: 1fr 34px;
+      align-items: center;
+      border-bottom: 1px solid #e9edf3;
+      margin-bottom: 10px;
+    }
+
+    .date-row h2 {
+      margin: 0 0 7px;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .date-row p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .calendar-mini {
+      width: 24px;
+      height: 24px;
+      border: 1.7px solid #111827;
+      border-radius: 5px;
+      position: relative;
+      justify-self: end;
+    }
+
+    .calendar-mini::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      top: 6px;
+      border-top: 1.7px solid #111827;
+    }
+
+    .calendar-mini::after {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: -3px;
+      width: 9px;
+      height: 6px;
+      border-left: 1.7px solid #111827;
+      border-right: 1.7px solid #111827;
+    }
+
+    .course-card {
+      height: 104px;
+      padding: 14px 15px 12px;
+      display: grid;
+      grid-template-columns: 1fr 50px;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .course-meta {
+      color: #4b5563;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .course-title {
+      margin: 12px 0 10px;
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .course-place,
+    .teacher {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .course-place {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .pin {
+      width: 12px;
+      height: 12px;
+      display: inline-block;
+      position: relative;
+    }
+
+    .pin::before {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 1px;
+      width: 6px;
+      height: 8px;
+      border: 1.5px solid currentColor;
+      border-radius: 6px 6px 7px 7px;
+      transform: rotate(-45deg);
+    }
+
+    .pin::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 4px;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .course-side {
+      display: grid;
+      justify-items: end;
+      align-content: space-between;
+    }
+
+    .class-icon {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+    }
+
+    .class-icon svg {
+      width: 26px;
+      height: 26px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2.1;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .class-icon.blue {
+      color: var(--blue-deep);
+      background: #e8f0ff;
+    }
+
+    .class-icon.green {
+      color: #16a34a;
+      background: #dcfce7;
+    }
+
+    .class-icon.purple {
+      color: #7c3aed;
+      background: #f3e8ff;
+    }
+
+    .class-icon.red {
+      color: var(--red);
+      background: #ffe4e9;
+    }
+
+    .exam-time {
+      color: #f43f5e;
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .empty-card {
+      height: 80px;
+      display: grid;
+      grid-template-columns: 1fr;
+      place-items: center;
+      color: #98a2b3;
+      font-size: 14px;
+      gap: 7px;
+    }
+
+    .empty-card svg {
+      width: 25px;
+      height: 25px;
+      stroke: #a5adb9;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .week-nav {
+      height: 41px;
+      display: grid;
+      grid-template-columns: 66px 1fr 66px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: #4b5563;
+    }
+
+    .week-nav button {
+      height: 36px;
+      border: 0;
+      background: transparent;
+      color: #4b5563;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0;
+      font-size: 12px;
+    }
+
+    .week-select {
+      height: 36px;
+      border: 1px solid #d8dee8;
+      border-radius: 7px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: #101828;
+      font-size: 13px;
+    }
+
+    .chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 1.7px solid currentColor;
+      border-bottom: 1.7px solid currentColor;
+      transform: rotate(45deg);
+      margin-top: -3px;
+    }
+
+    .arrow-left,
+    .arrow-right {
+      width: 9px;
+      height: 9px;
+      border-left: 1.6px solid currentColor;
+      border-bottom: 1.6px solid currentColor;
+    }
+
+    .arrow-left {
+      transform: rotate(45deg);
+    }
+
+    .arrow-right {
+      transform: rotate(-135deg);
+    }
+
+    .timetable {
+      height: 546px;
+      display: grid;
+      grid-template-columns: 42px repeat(7, 1fr);
+      grid-template-rows: 50px repeat(9, 55px);
+      border-top: 1px solid var(--soft-line);
+      border-left: 1px solid var(--soft-line);
+      background: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timetable::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(to right, transparent 41px, var(--soft-line) 41px, var(--soft-line) 42px, transparent 42px),
+        repeating-linear-gradient(to right, transparent 0, transparent calc((100% - 42px) / 7 - 1px), var(--soft-line) calc((100% - 42px) / 7 - 1px), var(--soft-line) calc((100% - 42px) / 7)),
+        repeating-linear-gradient(to bottom, transparent 0, transparent 54px, var(--soft-line) 54px, var(--soft-line) 55px);
+      background-position: 0 0, 42px 0, 0 50px;
+    }
+
+    .weekday,
+    .time-cell {
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: #4b5563;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .weekday strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #111827;
+      font-size: 12px;
+    }
+
+    .time-cell strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .lesson-block {
+      z-index: 2;
+      margin: 6px 5px;
+      padding: 9px 5px;
+      border-radius: 5px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.28;
+      font-weight: 800;
+      overflow: hidden;
+    }
+
+    .lesson-block span {
+      display: block;
+      margin-top: 8px;
+      font-weight: 700;
+    }
+
+    .lesson-blue {
+      color: #1d4ed8;
+      border: 1px solid #9cc4ff;
+      background: #d9ebff;
+    }
+
+    .lesson-green {
+      color: #047857;
+      border: 1px solid #a7e4be;
+      background: #daf8e5;
+    }
+
+    .lesson-purple {
+      color: #6d28d9;
+      border: 1px solid #d6b7ff;
+      background: #efe0ff;
+    }
+
+    .lesson-yellow {
+      color: #92400e;
+      border: 1px solid #f4d17f;
+      background: #fff2c7;
+    }
+
+    .lesson-red {
+      color: #e11d48;
+      border: 1px solid #ffc1ca;
+      background: #ffe0e3;
+    }
+
+    .lesson-cyan {
+      color: #0f766e;
+      border: 1px solid #99f6e4;
+      background: #d8fbf6;
+    }
+
+    .score-summary {
+      height: 120px;
+      padding: 18px 14px 14px;
+      border: 1px solid #d9e8ff;
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 95% 18%, rgba(47, 123, 255, .13) 0 35px, transparent 36px),
+        linear-gradient(135deg, #eef6ff, #e8f2ff 55%, #dcecff);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 17px;
+    }
+
+    .score-summary::after {
+      content: "";
+      position: absolute;
+      right: 20px;
+      top: 19px;
+      width: 48px;
+      height: 34px;
+      opacity: .2;
+      background:
+        linear-gradient(150deg, transparent 17px, #2f7bff 18px, #2f7bff 20px, transparent 21px),
+        linear-gradient(30deg, transparent 17px, #2f7bff 18px, #2f7bff 20px, transparent 21px);
+      transform: skewX(-10deg);
+    }
+
+    .score-summary h2 {
+      margin: 0 0 20px;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 11px;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .metric span {
+      color: #344054;
+      font-size: 12px;
+    }
+
+    .filter {
+      height: 25px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #4b5563;
+      font-size: 13px;
+      margin: 0 0 10px 2px;
+    }
+
+    .semester-card {
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .semester-top {
+      min-height: 57px;
+      padding: 14px 12px 10px;
+      display: grid;
+      grid-template-columns: 1fr 18px;
+      align-items: start;
+      gap: 8px;
+      font-size: 12px;
+      color: #4b5563;
+    }
+
+    .semester-title {
+      margin: 0 0 8px;
+      color: #101828;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .semester-stats {
+      display: flex;
+      gap: 18px;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .collapse-icon {
+      width: 9px;
+      height: 9px;
+      border-left: 1.6px solid currentColor;
+      border-top: 1.6px solid currentColor;
+      transform: rotate(45deg);
+      margin: 4px auto 0;
+    }
+
+    .semester-card.collapsed .collapse-icon {
+      border-left: 0;
+      border-top: 0;
+      border-right: 1.6px solid currentColor;
+      border-bottom: 1.6px solid currentColor;
+      transform: rotate(45deg);
+      margin-top: 0;
+    }
+
+    .grade-table {
+      display: grid;
+      grid-template-columns: 1.75fr .55fr .65fr .65fr;
+      border-top: 1px solid #eef0f4;
+    }
+
+    .grade-cell {
+      min-height: 34px;
+      padding: 10px 11px;
+      border-bottom: 1px solid #eef0f4;
+      color: #111827;
+      font-size: 11px;
+      line-height: 1.1;
+      display: flex;
+      align-items: center;
+    }
+
+    .grade-cell.head {
+      color: #667085;
+      font-size: 11px;
+    }
+
+    .grade-cell.num {
+      justify-content: center;
+    }
+
+    .profile-card {
+      height: 135px;
+      padding: 20px 15px;
+      display: grid;
+      grid-template-columns: 76px 1fr 16px;
+      gap: 12px;
+      align-items: center;
+      border-radius: 9px;
+      color: #fff;
+      background: linear-gradient(135deg, #2f7bff, #3e89ff 62%, #2b74f2);
+      box-shadow: 0 10px 22px rgba(47, 123, 255, .18);
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 70px;
+      height: 70px;
+      border: 3px solid rgba(255, 255, 255, .86);
+      border-radius: 50%;
+      background: linear-gradient(#eef5ff 0 38%, #b7d5ff 39% 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .avatar::before {
+      content: "";
+      position: absolute;
+      left: 22px;
+      top: 16px;
+      width: 25px;
+      height: 29px;
+      border-radius: 48% 48% 45% 45%;
+      background: #ffd2b2;
+      box-shadow: 0 -11px 0 #1f2937;
+    }
+
+    .avatar::after {
+      content: "";
+      position: absolute;
+      left: 15px;
+      bottom: -7px;
+      width: 40px;
+      height: 29px;
+      border-radius: 18px 18px 8px 8px;
+      background: #2f7bff;
+      border: 2px solid rgba(255, 255, 255, .74);
+    }
+
+    .profile-card h2 {
+      margin: 0 0 9px;
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .profile-card p {
+      margin: 0 0 8px;
+      font-size: 13px;
+      line-height: 1;
+      color: rgba(255, 255, 255, .92);
+    }
+
+    .profile-arrow {
+      width: 9px;
+      height: 9px;
+      border-right: 1.8px solid #fff;
+      border-bottom: 1.8px solid #fff;
+      transform: rotate(-45deg);
+      opacity: .92;
+    }
+
+    .info-panel {
+      padding: 1px 12px;
+      margin-bottom: 10px;
+    }
+
+    .panel-title {
+      margin: 13px 0 12px;
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .info-row {
+      min-height: 34px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      align-items: center;
+      color: #111827;
+      font-size: 13px;
+    }
+
+    .info-row span {
+      color: #344054;
+    }
+
+    .info-row strong {
+      justify-self: end;
+      font-weight: 500;
+      text-align: right;
+      line-height: 1.3;
+    }
+
+    .action-panel {
+      overflow: hidden;
+    }
+
+    .action-row {
+      height: 45px;
+      display: grid;
+      grid-template-columns: 24px 1fr 12px;
+      gap: 8px;
+      align-items: center;
+      padding: 0 13px;
+      border-bottom: 1px solid #eef0f4;
+      font-size: 14px;
+    }
+
+    .action-row:last-child {
+      border-bottom: 0;
+    }
+
+    .action-row svg {
+      width: 18px;
+      height: 18px;
+      stroke: #344054;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .action-row .row-arrow {
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid #98a2b3;
+      border-bottom: 1.5px solid #98a2b3;
+      transform: rotate(-45deg);
+    }
+
+    @media (max-width: 1510px) {
+      .prototype-board {
+        grid-template-columns: repeat(2, 1fr);
+        width: min(820px, calc(100vw - 24px));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .prototype-board {
+        grid-template-columns: 1fr;
+        width: min(390px, calc(100vw - 16px));
+        gap: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="prototype-board">
+    <section class="phone-set" aria-label="首页">
+      <div class="phone">
+        <div class="nav">
+          <div class="nav-title">首页</div>
+        </div>
+        <div class="content">
+          <div class="date-row">
+            <div>
+              <h2>2024年5月20日　星期一</h2>
+              <p>第12周</p>
+            </div>
+            <span class="calendar-mini"></span>
+          </div>
+
+          <div class="section-head">
+            <strong>今日课程</strong>
+            <span>共 3 节</span>
+          </div>
+
+          <article class="soft-card course-card">
+            <div>
+              <div class="course-meta">1-2节　　08:00-09:45</div>
+              <div class="course-title">高等数学（上）</div>
+              <div class="course-place"><span class="pin"></span>教学楼A201</div>
+            </div>
+            <div class="course-side">
+              <div class="class-icon blue">
+                <svg viewBox="0 0 24 24"><path d="M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V4Z"/><path d="M8 18h10"/><path d="M9 7h6"/></svg>
+              </div>
+              <span class="teacher">张老师</span>
+            </div>
+          </article>
+
+          <article class="soft-card course-card">
+            <div>
+              <div class="course-meta">3-4节　　10:10-11:55</div>
+              <div class="course-title">大学物理（上）</div>
+              <div class="course-place"><span class="pin"></span>理科楼B305</div>
+            </div>
+            <div class="course-side">
+              <div class="class-icon green">
+                <svg viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v5l-5 8a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 16l-5-8V3"/><path d="M8 15h8"/><path d="M11 12h2"/></svg>
+              </div>
+              <span class="teacher">李老师</span>
+            </div>
+          </article>
+
+          <article class="soft-card course-card">
+            <div>
+              <div class="course-meta">5-6节　　14:00-15:45</div>
+              <div class="course-title">程序设计基础（C语言）</div>
+              <div class="course-place"><span class="pin"></span>信息楼C202</div>
+            </div>
+            <div class="course-side">
+              <div class="class-icon purple">
+                <svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/><path d="m14 5-4 14"/></svg>
+              </div>
+              <span class="teacher">王老师</span>
+            </div>
+          </article>
+
+          <div class="section-head">
+            <strong>今日考试</strong>
+            <span>共 1 场</span>
+          </div>
+
+          <article class="soft-card course-card">
+            <div>
+              <div class="course-meta">19:00-21:00</div>
+              <div class="course-title">大学英语四级模拟考试</div>
+              <div class="course-place"><span class="pin"></span>教学楼A101</div>
+            </div>
+            <div class="course-side">
+              <div class="class-icon red">
+                <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 11h6"/><path d="M9 15h4"/><path d="m15 16 1.5 1.5L20 14"/></svg>
+              </div>
+              <span class="exam-time">距开始 09:18:32</span>
+            </div>
+          </article>
+
+          <div class="soft-card empty-card">
+            <svg viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M4 8h16"/><path d="M5 4h14a1 1 0 0 1 1 1v15H4V5a1 1 0 0 1 1-1Z"/><path d="m9 14 2 2 4-5"/></svg>
+            <span>暂无更多安排</span>
+          </div>
+        </div>
+        <nav class="tabbar">
+          <div class="tab active">
+            <svg class="fill-icon" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z"/></svg>
+            <span>首页</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M8 14h3"/><path d="M14 14h2"/></svg>
+            <span>课表</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="m9 13 2 2 4-5"/></svg>
+            <span>成绩</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>个人</span>
+          </div>
+        </nav>
+      </div>
+      <div class="caption">首页</div>
+    </section>
+
+    <section class="phone-set" aria-label="课表">
+      <div class="phone">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="system-icons">
+            <span class="signal"><i></i><i></i><i></i><i></i></span>
+            <span class="wifi"></span>
+            <span class="battery"></span>
+          </div>
+        </div>
+        <div class="nav">
+          <div class="nav-title">课表</div>
+          <div class="wechat-menu">
+            <span class="menu-dots"><span></span><span></span><span></span></span>
+            <span class="mini-ring"></span>
+          </div>
+        </div>
+        <div class="content" style="padding-left: 12px; padding-right: 12px;">
+          <div class="week-nav">
+            <button type="button"><span class="arrow-left"></span>上一周</button>
+            <div class="week-select">第12周 (5.20-5.26)<span class="chevron"></span></div>
+            <button type="button">下一周<span class="arrow-right"></span></button>
+          </div>
+
+          <div class="timetable">
+            <div class="weekday" style="grid-column:2;grid-row:1"><div><strong>周一</strong>5/20</div></div>
+            <div class="weekday" style="grid-column:3;grid-row:1"><div><strong>周二</strong>5/21</div></div>
+            <div class="weekday" style="grid-column:4;grid-row:1"><div><strong>周三</strong>5/22</div></div>
+            <div class="weekday" style="grid-column:5;grid-row:1"><div><strong>周四</strong>5/23</div></div>
+            <div class="weekday" style="grid-column:6;grid-row:1"><div><strong>周五</strong>5/24</div></div>
+            <div class="weekday" style="grid-column:7;grid-row:1"><div><strong>周六</strong>5/25</div></div>
+            <div class="weekday" style="grid-column:8;grid-row:1"><div><strong>周日</strong>5/26</div></div>
+
+            <div class="time-cell" style="grid-column:1;grid-row:2"><div><strong>1</strong>08:00<br>08:45</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:3"><div><strong>2</strong>08:55<br>09:40</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:4"><div><strong>3</strong>10:10<br>10:55</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:5"><div><strong>4</strong>11:05<br>11:50</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:6"><div><strong>5</strong>14:00<br>14:45</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:7"><div><strong>6</strong>14:55<br>15:40</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:8"><div><strong>7</strong>16:00<br>16:45</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:9"><div><strong>8</strong>16:55<br>17:40</div></div>
+            <div class="time-cell" style="grid-column:1;grid-row:10"><div><strong>9</strong>19:00<br>20:45</div></div>
+
+            <div class="lesson-block lesson-blue" style="grid-column:2;grid-row:2 / span 2;">高等<br>数学<br>（上）<span>A201</span></div>
+            <div class="lesson-block lesson-green" style="grid-column:3;grid-row:4 / span 2;">大学<br>物理<br>（上）<span>B305</span></div>
+            <div class="lesson-block lesson-purple" style="grid-column:2;grid-row:6 / span 2;">程序<br>设计<br>基础<br>（C语言）<span>C202</span></div>
+            <div class="lesson-block lesson-blue" style="grid-column:5;grid-row:2 / span 2;">高等<br>数学<br>（上）<span>A201</span></div>
+            <div class="lesson-block lesson-purple" style="grid-column:5;grid-row:6 / span 2;">程序<br>设计<br>基础<br>（C语言）<span>C202</span></div>
+            <div class="lesson-block lesson-cyan" style="grid-column:5;grid-row:10 / span 1;">体育<br>（羽毛球）<span>体育馆</span></div>
+            <div class="lesson-block lesson-green" style="grid-column:6;grid-row:4 / span 2;">大学<br>物理<br>（上）<span>B305</span></div>
+            <div class="lesson-block lesson-yellow" style="grid-column:7;grid-row:4 / span 2;">线性<br>代数<span>A205</span></div>
+            <div class="lesson-block lesson-red" style="grid-column:7;grid-row:6 / span 2;">大学<br>英语<span>D301</span></div>
+          </div>
+        </div>
+        <nav class="tabbar">
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z"/></svg>
+            <span>首页</span>
+          </div>
+          <div class="tab active">
+            <svg class="fill-icon" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M8 14h3"/><path d="M14 14h2"/></svg>
+            <span>课表</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="m9 13 2 2 4-5"/></svg>
+            <span>成绩</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>个人</span>
+          </div>
+        </nav>
+      </div>
+      <div class="caption">课表</div>
+    </section>
+
+    <section class="phone-set" aria-label="成绩">
+      <div class="phone">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="system-icons">
+            <span class="signal"><i></i><i></i><i></i><i></i></span>
+            <span class="wifi"></span>
+            <span class="battery"></span>
+          </div>
+        </div>
+        <div class="nav">
+          <div class="nav-title">成绩</div>
+          <div class="wechat-menu">
+            <span class="menu-dots"><span></span><span></span><span></span></span>
+            <span class="mini-ring"></span>
+          </div>
+        </div>
+        <div class="content">
+          <section class="score-summary">
+            <h2>学业总览</h2>
+            <div class="metric-row">
+              <div class="metric"><strong>152.0</strong><span>总学分</span></div>
+              <div class="metric"><strong>87.45</strong><span>平均分</span></div>
+              <div class="metric"><strong>3.62</strong><span>绩点</span></div>
+            </div>
+          </section>
+
+          <div class="filter">全部学期 <span class="chevron"></span></div>
+
+          <section class="soft-card semester-card">
+            <div class="semester-top">
+              <div>
+                <h3 class="semester-title">2023-2024学年　第二学期</h3>
+                <div class="semester-stats"><span>学分：24.0</span><span>平均分：88.13</span><span>绩点：3.71</span></div>
+              </div>
+              <span class="collapse-icon"></span>
+            </div>
+            <div class="grade-table">
+              <div class="grade-cell head">课程名称</div><div class="grade-cell head num">学分</div><div class="grade-cell head num">成绩</div><div class="grade-cell head num">绩点</div>
+              <div class="grade-cell">高等数学（上）</div><div class="grade-cell num">4.0</div><div class="grade-cell num">92</div><div class="grade-cell num">4.0</div>
+              <div class="grade-cell">大学物理（上）</div><div class="grade-cell num">4.0</div><div class="grade-cell num">89</div><div class="grade-cell num">3.7</div>
+              <div class="grade-cell">程序设计基础（C语言）</div><div class="grade-cell num">3.0</div><div class="grade-cell num">86</div><div class="grade-cell num">3.3</div>
+              <div class="grade-cell">大学英语</div><div class="grade-cell num">3.0</div><div class="grade-cell num">90</div><div class="grade-cell num">3.7</div>
+              <div class="grade-cell">线性代数</div><div class="grade-cell num">3.0</div><div class="grade-cell num">85</div><div class="grade-cell num">3.0</div>
+              <div class="grade-cell">马克思主义基本原理</div><div class="grade-cell num">3.0</div><div class="grade-cell num">88</div><div class="grade-cell num">3.3</div>
+              <div class="grade-cell">体育（羽毛球）</div><div class="grade-cell num">1.0</div><div class="grade-cell num">95</div><div class="grade-cell num">4.0</div>
+              <div class="grade-cell">大学生心理健康教育</div><div class="grade-cell num">1.0</div><div class="grade-cell num">90</div><div class="grade-cell num">4.0</div>
+              <div class="grade-cell">创新创业基础</div><div class="grade-cell num">2.0</div><div class="grade-cell num">87</div><div class="grade-cell num">3.3</div>
+            </div>
+          </section>
+
+          <section class="soft-card semester-card collapsed">
+            <div class="semester-top">
+              <div>
+                <h3 class="semester-title">2023-2024学年　第一学期</h3>
+                <div class="semester-stats"><span>学分：23.0</span><span>平均分：85.22</span><span>绩点：3.35</span></div>
+              </div>
+              <span class="collapse-icon"></span>
+            </div>
+          </section>
+
+          <section class="soft-card semester-card collapsed">
+            <div class="semester-top">
+              <div>
+                <h3 class="semester-title">2022-2023学年　第二学期</h3>
+                <div class="semester-stats"><span>学分：22.0</span><span>平均分：84.09</span><span>绩点：3.23</span></div>
+              </div>
+              <span class="collapse-icon"></span>
+            </div>
+          </section>
+
+          <section class="soft-card semester-card collapsed">
+            <div class="semester-top">
+              <div>
+                <h3 class="semester-title">2022-2023学年　第一学期</h3>
+                <div class="semester-stats"><span>学分：21.0</span><span>平均分：82.11</span><span>绩点：3.02</span></div>
+              </div>
+              <span class="collapse-icon"></span>
+            </div>
+          </section>
+        </div>
+        <nav class="tabbar">
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z"/></svg>
+            <span>首页</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M8 14h3"/><path d="M14 14h2"/></svg>
+            <span>课表</span>
+          </div>
+          <div class="tab active">
+            <svg class="fill-icon" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 17V11"/><path d="M12 17V8"/><path d="M15 17v-4"/></svg>
+            <span>成绩</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>个人</span>
+          </div>
+        </nav>
+      </div>
+      <div class="caption">成绩</div>
+    </section>
+
+    <section class="phone-set" aria-label="个人">
+      <div class="phone">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="system-icons">
+            <span class="signal"><i></i><i></i><i></i><i></i></span>
+            <span class="wifi"></span>
+            <span class="battery"></span>
+          </div>
+        </div>
+        <div class="nav">
+          <div class="nav-title">个人</div>
+          <div class="wechat-menu">
+            <span class="menu-dots"><span></span><span></span><span></span></span>
+            <span class="mini-ring"></span>
+          </div>
+        </div>
+        <div class="content">
+          <section class="profile-card">
+            <div class="avatar"></div>
+            <div>
+              <h2>张三</h2>
+              <p>学号：2021123456</p>
+              <p>计算机科学与技术</p>
+              <p>2021级　本科</p>
+            </div>
+            <span class="profile-arrow"></span>
+          </section>
+
+          <section class="soft-card info-panel">
+            <h3 class="panel-title">基本信息</h3>
+            <div class="info-row"><span>性别</span><strong>男</strong></div>
+            <div class="info-row"><span>出生年月</span><strong>2003-05-12</strong></div>
+            <div class="info-row"><span>政治面貌</span><strong>共青团员</strong></div>
+            <div class="info-row"><span>手机号</span><strong>138****1234</strong></div>
+            <div class="info-row"><span>邮箱</span><strong>zhangsan@xxx.edu.cn</strong></div>
+            <div class="info-row"><span>籍贯</span><strong>广东省 深圳市</strong></div>
+            <div class="info-row"><span>入学时间</span><strong>2021-09-01</strong></div>
+          </section>
+
+          <section class="soft-card info-panel">
+            <h3 class="panel-title">其他信息</h3>
+            <div class="info-row"><span>学生状态</span><strong>在读</strong></div>
+            <div class="info-row"><span>宿舍信息</span><strong>东区宿舍12栋 502</strong></div>
+            <div class="info-row"><span>辅导员</span><strong>李老师　138****5678</strong></div>
+            <div class="info-row"><span>班级</span><strong>计科2102班</strong></div>
+          </section>
+
+          <section class="soft-card action-panel">
+            <div class="action-row">
+              <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="m19.4 15 .1 2.1-2.4 2.4-2.1-.1-1.5 1.1h-3l-1.5-1.1-2.1.1-2.4-2.4.1-2.1-1.1-1.5v-3l1.1-1.5-.1-2.1 2.4-2.4 2.1.1L10.5 3h3l1.5 1.1 2.1-.1 2.4 2.4-.1 2.1 1.1 1.5v3Z"/></svg>
+              <span>设置</span>
+              <span class="row-arrow"></span>
+            </div>
+            <div class="action-row">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span>关于我们</span>
+              <span class="row-arrow"></span>
+            </div>
+            <div class="action-row">
+              <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m8 10 3 3 5-5"/></svg>
+              <span>意见反馈</span>
+              <span class="row-arrow"></span>
+            </div>
+          </section>
+        </div>
+        <nav class="tabbar">
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z"/></svg>
+            <span>首页</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M8 14h3"/><path d="M14 14h2"/></svg>
+            <span>课表</span>
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="m9 13 2 2 4-5"/></svg>
+            <span>成绩</span>
+          </div>
+          <div class="tab active">
+            <svg class="fill-icon" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>个人</span>
+          </div>
+        </nav>
+      </div>
+      <div class="caption">个人</div>
+    </section>
+  </main>
+</body>
+</html>

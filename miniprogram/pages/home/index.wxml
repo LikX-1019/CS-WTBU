@@ -1,0 +1,68 @@
+<view class="mini-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="custom-nav-title">首页</view>
+  </view>
+
+  <view class="content home-content">
+    <view class="date-row">
+      <view>
+        <view class="date-title">{{today}}</view>
+        <view class="date-week">{{weekText || '正在加载课表'}}<text wx:if="{{lastFetchedText}}"> · {{lastFetchedText}} 更新</text></view>
+      </view>
+      <view class="calendar-mini"></view>
+    </view>
+
+    <view wx:if="{{loading}}" class="soft-card state-card">正在从教务系统加载课程和考试...</view>
+    <view wx:elif="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
+
+    <view class="section-head">
+      <view class="section-title">今日安排</view>
+      <text>共 {{items.length}} 项</text>
+    </view>
+
+    <view
+      wx:for="{{items}}"
+      wx:key="id"
+      class="soft-card course-card {{item.type === 'exam' ? 'exam-card' : ''}}"
+    >
+      <view>
+        <view class="course-meta">{{item.section}}　　{{item.time}}</view>
+        <view class="course-title">{{item.name}}</view>
+        <view class="course-place">
+          <view class="pin"></view>
+          <text>{{item.location}}</text>
+        </view>
+      </view>
+      <view class="course-side">
+        <view class="class-icon class-icon-{{item.tone}}">
+          <view class="card-symbol symbol-{{item.icon}}"></view>
+        </view>
+        <text class="teacher">{{item.teacher}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{!loading && items.length === 0}}" class="soft-card empty-card">
+      <view class="empty-icon"></view>
+      <text>今日暂无安排</text>
+    </view>
+  </view>
+
+  <view class="tabbar">
+    <view class="tab tab-active" bindtap="goHome">
+      <view class="tab-icon icon-home"></view>
+      <text>首页</text>
+    </view>
+    <view class="tab" bindtap="goSchedule">
+      <view class="tab-icon icon-calendar"></view>
+      <text>课表</text>
+    </view>
+    <view class="tab" bindtap="goGrades">
+      <view class="tab-icon icon-score"></view>
+      <text>成绩</text>
+    </view>
+    <view class="tab" bindtap="goProfile">
+      <view class="tab-icon icon-user"></view>
+      <text>个人</text>
+    </view>
+  </view>
+</view>

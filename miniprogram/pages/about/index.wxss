@@ -1,0 +1,132 @@
+.sub-page {
+  padding-bottom: 48rpx;
+}
+
+.nav-back {
+  position: absolute;
+  left: 32rpx;
+  bottom: 28rpx;
+  width: 44rpx;
+  height: 44rpx;
+  color: #101828;
+}
+
+.nav-back::before {
+  content: "";
+  position: absolute;
+  left: 15rpx;
+  top: 10rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(45deg);
+}
+
+.about-hero {
+  min-height: 176rpx;
+  display: flex;
+  align-items: center;
+  gap: 26rpx;
+  margin-bottom: 22rpx;
+}
+
+.about-logo {
+  width: 112rpx;
+  height: 112rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22rpx;
+  background: #2f7bff;
+  color: #ffffff;
+  box-shadow: 0 16rpx 36rpx rgba(47, 123, 255, 0.18);
+}
+
+.logo-mark {
+  width: 58rpx;
+  height: 62rpx;
+  border: 5rpx solid currentColor;
+  border-radius: 8rpx;
+  position: relative;
+}
+
+.logo-mark::before {
+  content: "";
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  top: 18rpx;
+  border-top: 5rpx solid currentColor;
+}
+
+.logo-mark::after {
+  content: "";
+  position: absolute;
+  left: 13rpx;
+  top: 33rpx;
+  width: 26rpx;
+  height: 14rpx;
+  border-left: 5rpx solid currentColor;
+  border-bottom: 5rpx solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.about-name {
+  margin-bottom: 14rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.about-version {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.about-card {
+  padding: 28rpx;
+  margin-bottom: 20rpx;
+}
+
+.about-section-title {
+  margin-bottom: 18rpx;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.about-text {
+  color: #344054;
+  font-size: 26rpx;
+  line-height: 1.65;
+}
+
+.about-list {
+  overflow: hidden;
+}
+
+.about-row {
+  min-height: 86rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 0 28rpx;
+  border-bottom: 1rpx solid #eef0f4;
+  color: #344054;
+  font-size: 26rpx;
+}
+
+.about-row:last-child {
+  border-bottom: 0;
+}
+
+.about-row text:last-child {
+  max-width: 420rpx;
+  color: #101828;
+  text-align: right;
+}

@@ -1,0 +1,16 @@
+{
+  "name": "get-schedule",
+  "version": "1.0.0",
+  "description": "Fetch course schedule from educational administration system",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/gradeParser.test.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cheerio": "1.0.0-rc.12",
+    "http-cookie-agent": "^6.0.8",
+    "tough-cookie": "^4.1.4",
+    "wx-server-sdk": "~2.6.3"
+  }
+}

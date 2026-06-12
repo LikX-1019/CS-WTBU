@@ -1,0 +1,43 @@
+<view class="mini-page sub-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="nav-back" bindtap="goBack"></view>
+    <view class="custom-nav-title">关于我们</view>
+  </view>
+
+  <view class="content">
+    <view class="about-hero">
+      <view class="about-logo">
+        <view class="logo-mark"></view>
+      </view>
+      <view>
+        <view class="about-name">课程表助手</view>
+        <view class="about-version">Version {{version}}</view>
+      </view>
+    </view>
+
+    <view class="soft-card about-card">
+      <view class="about-section-title">服务说明</view>
+      <view class="about-text">课程表助手用于查询教务系统中的课表、考试、成绩和学籍信息。首次绑定后，小程序会通过云函数访问教务系统并同步数据。</view>
+    </view>
+
+    <view class="soft-card about-card">
+      <view class="about-section-title">数据安全</view>
+      <view class="about-text">教务系统密码不会保存在小程序端。云函数会加密保存绑定信息，用于后续自动刷新课程和成绩。</view>
+    </view>
+
+    <view class="soft-card about-list">
+      <view class="about-row">
+        <text>适配学校</text>
+        <text>武汉工商学院</text>
+      </view>
+      <view class="about-row">
+        <text>数据来源</text>
+        <text>教务管理系统</text>
+      </view>
+      <view class="about-row">
+        <text>当前状态</text>
+        <text>持续维护</text>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,115 @@
+<view class="mini-page schedule-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="custom-nav-title">课表</view>
+  </view>
+
+  <view class="content schedule-content">
+    <view class="schedule-filters">
+      <picker
+        class="filter-picker semester-picker"
+        mode="selector"
+        range="{{semesterOptions}}"
+        range-key="label"
+        value="{{semesterIndex}}"
+        bindchange="onSemesterChange"
+      >
+        <view class="filter-select">
+          <text>{{selectedSemesterLabel}}</text>
+          <view class="chevron-down"></view>
+        </view>
+      </picker>
+      <picker
+        class="filter-picker week-picker"
+        mode="selector"
+        range="{{weekOptions}}"
+        value="{{weekIndex}}"
+        bindchange="onWeekChange"
+      >
+        <view class="filter-select">
+          <text>第{{currentWeek}}周</text>
+          <view class="chevron-down"></view>
+        </view>
+      </picker>
+    </view>
+
+    <view wx:if="{{loading}}" class="soft-card state-card">正在从教务系统加载课表...</view>
+    <view wx:elif="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
+
+    <view class="timetable">
+      <view
+        wx:for="{{days}}"
+        wx:key="week"
+        class="weekday"
+        style="{{item.style}}"
+      >
+        <view class="weekday-name">{{item.week}}</view>
+        <view class="weekday-date">{{item.date}}</view>
+      </view>
+
+      <view
+        wx:for="{{periods}}"
+        wx:key="index"
+        class="time-cell"
+        style="{{item.style}}"
+      >
+        <view class="period-index">{{item.index}}</view>
+        <view>{{item.start}}</view>
+        <view>{{item.end}}</view>
+      </view>
+
+      <view
+        wx:for="{{lessons}}"
+        wx:key="id"
+        class="lesson-block lesson-{{item.tone}}"
+        style="{{item.style}}"
+        data-index="{{index}}"
+        bindtap="openLessonDetail"
+      >
+        <block wx:for="{{item.nameLines}}" wx:key="*this" wx:for-item="line">
+          <view>{{line}}</view>
+        </block>
+        <view class="lesson-room">{{item.room}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!loading && lessons.length === 0}}" class="soft-card state-card empty-schedule">暂无课表数据</view>
+  </view>
+
+  <view class="tabbar">
+    <view class="tab" bindtap="goHome">
+      <view class="tab-icon icon-home"></view>
+      <text>首页</text>
+    </view>
+    <view class="tab tab-active" bindtap="goSchedule">
+      <view class="tab-icon icon-calendar"></view>
+      <text>课表</text>
+    </view>
+    <view class="tab" bindtap="goGrades">
+      <view class="tab-icon icon-score"></view>
+      <text>成绩</text>
+    </view>
+    <view class="tab" bindtap="goProfile">
+      <view class="tab-icon icon-user"></view>
+      <text>个人</text>
+    </view>
+  </view>
+
+  <view wx:if="{{lessonDetailVisible}}" class="lesson-detail-mask" bindtap="closeLessonDetail">
+    <view class="lesson-detail-card lesson-detail-{{selectedLesson.tone}}" catchtap="noop">
+      <view class="lesson-detail-head">
+        <view>
+          <view class="lesson-detail-kicker">{{selectedLesson.weekdayText}} {{selectedLesson.section}}</view>
+          <view class="lesson-detail-title">{{selectedLesson.name}}</view>
+        </view>
+        <view class="lesson-detail-close" bindtap="closeLessonDetail"></view>
+      </view>
+      <view class="lesson-detail-time">{{selectedLesson.time}}</view>
+      <view class="lesson-detail-list">
+        <view wx:for="{{selectedLesson.detailRows}}" wx:key="label" class="lesson-detail-row">
+          <text>{{item.label}}</text>
+          <text>{{item.value}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,78 @@
+<view class="mini-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="custom-nav-title">成绩</view>
+  </view>
+
+  <view class="content">
+    <view class="score-summary">
+      <view class="score-summary-title">学业总览</view>
+      <view class="metric-row">
+        <view wx:for="{{summary}}" wx:key="label" class="metric">
+          <view class="metric-value">{{item.value}}</view>
+          <view class="metric-label">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="cap-icon"></view>
+    </view>
+
+    <view class="filter">全部学期 <view class="chevron-down"></view></view>
+
+    <view wx:if="{{loading}}" class="soft-card grade-state">正在加载成绩...</view>
+    <view wx:elif="{{errorText}}" class="soft-card grade-state grade-error">{{errorText}}</view>
+    <view wx:elif="{{semesters.length === 0}}" class="soft-card grade-state">{{emptyText}}</view>
+
+    <view
+      wx:for="{{semesters}}"
+      wx:key="id"
+      class="soft-card semester-card {{item.expanded ? '' : 'semester-collapsed'}}"
+    >
+      <view class="semester-top" bindtap="toggleSemester" data-index="{{index}}">
+        <view>
+          <view class="semester-title">{{item.title}}</view>
+          <view class="semester-stats">
+            <text>学分：{{item.credit}}</text>
+            <text>平均分：{{item.average}}</text>
+            <text>绩点：{{item.gpa}}</text>
+          </view>
+        </view>
+        <view class="collapse-icon"></view>
+      </view>
+
+      <view wx:if="{{item.expanded}}" class="grade-table">
+        <view class="grade-row">
+          <view class="grade-cell grade-head grade-name">课程名称</view>
+          <view class="grade-cell grade-head grade-num">学分</view>
+          <view class="grade-cell grade-head grade-num">成绩</view>
+          <view class="grade-cell grade-head grade-num">绩点</view>
+        </view>
+        <block wx:for="{{item.grades}}" wx:key="name" wx:for-item="grade">
+          <view class="grade-row">
+            <view class="grade-cell grade-name">{{grade.name}}</view>
+            <view class="grade-cell grade-num">{{grade.credit}}</view>
+            <view class="grade-cell grade-num {{grade.scoreLow ? 'grade-score-low' : ''}}">{{grade.score}}</view>
+            <view class="grade-cell grade-num">{{grade.gpa}}</view>
+          </view>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <view class="tabbar">
+    <view class="tab" bindtap="goHome">
+      <view class="tab-icon icon-home"></view>
+      <text>首页</text>
+    </view>
+    <view class="tab" bindtap="goSchedule">
+      <view class="tab-icon icon-calendar"></view>
+      <text>课表</text>
+    </view>
+    <view class="tab tab-active" bindtap="goGrades">
+      <view class="tab-icon icon-score"></view>
+      <text>成绩</text>
+    </view>
+    <view class="tab" bindtap="goProfile">
+      <view class="tab-icon icon-user"></view>
+      <text>个人</text>
+    </view>
+  </view>
+</view>

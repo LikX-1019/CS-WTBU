@@ -1,0 +1,111 @@
+<view class="mini-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="custom-nav-title">个人</view>
+  </view>
+
+  <view class="content">
+    <view wx:if="{{loading}}" class="soft-card profile-state">正在读取已保存的学籍信息...</view>
+    <view wx:elif="{{errorText}}" class="soft-card profile-state profile-error">{{errorText}}</view>
+
+    <view class="profile-card" bindtap="openProfileEditor">
+      <button
+        class="avatar-button"
+        open-type="chooseAvatar"
+        bindchooseavatar="onChooseAvatar"
+        catchtap="noop"
+      >
+        <image wx:if="{{student.avatarUrl}}" class="avatar-image" src="{{student.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar"></view>
+      </button>
+      <view>
+        <view class="profile-name">{{student.name}}</view>
+        <view class="profile-line">学号：{{student.number}}</view>
+        <view class="profile-line">{{student.major}}</view>
+        <view class="profile-line">{{student.level}}</view>
+      </view>
+      <view class="profile-arrow"></view>
+    </view>
+    <view class="edit-hint">点击卡片补充或修改个人信息</view>
+
+    <view class="soft-card info-panel">
+      <view class="panel-title">基本信息</view>
+      <view wx:for="{{baseInfo}}" wx:key="label" class="info-row">
+        <text>{{item.label}}</text>
+        <text class="info-value">{{item.value}}</text>
+      </view>
+    </view>
+
+    <view class="soft-card info-panel">
+      <view class="panel-title">其他信息</view>
+      <view wx:for="{{otherInfo}}" wx:key="label" class="info-row">
+        <text>{{item.label}}</text>
+        <text class="info-value">{{item.value}}</text>
+      </view>
+    </view>
+
+    <view class="soft-card action-panel">
+      <view
+        wx:for="{{actions}}"
+        wx:key="label"
+        class="action-row"
+        data-url="{{item.url}}"
+        bindtap="openAction"
+      >
+        <view class="action-icon action-{{item.icon}}"></view>
+        <text>{{item.label}}</text>
+        <view class="row-arrow"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tabbar">
+    <view class="tab" bindtap="goHome">
+      <view class="tab-icon icon-home"></view>
+      <text>首页</text>
+    </view>
+    <view class="tab" bindtap="goSchedule">
+      <view class="tab-icon icon-calendar"></view>
+      <text>课表</text>
+    </view>
+    <view class="tab" bindtap="goGrades">
+      <view class="tab-icon icon-score"></view>
+      <text>成绩</text>
+    </view>
+    <view class="tab tab-active" bindtap="goProfile">
+      <view class="tab-icon icon-user"></view>
+      <text>个人</text>
+    </view>
+  </view>
+
+  <view wx:if="{{editVisible}}" class="edit-mask" bindtap="closeProfileEditor">
+    <view class="edit-panel" catchtap="noop">
+      <view class="edit-head">
+        <view class="edit-title">编辑个人信息</view>
+        <view class="edit-close" bindtap="closeProfileEditor"></view>
+      </view>
+      <scroll-view scroll-y class="edit-scroll">
+        <view
+          wx:for="{{editRows}}"
+          wx:key="key"
+          class="edit-field"
+        >
+          <text>{{item.label}}</text>
+          <input
+            value="{{item.value}}"
+            placeholder="点击填写"
+            data-index="{{index}}"
+            bindinput="onProfileFieldInput"
+          />
+        </view>
+      </scroll-view>
+      <button
+        class="edit-save"
+        loading="{{savingProfile}}"
+        disabled="{{savingProfile}}"
+        bindtap="saveProfileEdit"
+      >
+        保存
+      </button>
+    </view>
+  </view>
+</view>

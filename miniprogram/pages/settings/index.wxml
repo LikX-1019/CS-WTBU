@@ -1,0 +1,51 @@
+<view class="mini-page sub-page">
+  <view class="custom-nav" style="{{navStyle}}">
+    <view class="nav-back" bindtap="goBack"></view>
+    <view class="custom-nav-title">设置</view>
+  </view>
+
+  <view class="content">
+    <view class="soft-card settings-card">
+      <view class="settings-row">
+        <view>
+          <view class="settings-title">自动缓存</view>
+          <view class="settings-desc">课表、成绩和个人资料会缓存在本机，减少重复加载。</view>
+        </view>
+        <switch checked="{{cacheEnabled}}" disabled color="#2f7bff" />
+      </view>
+      <view class="settings-row">
+        <view>
+          <view class="settings-title">本机缓存</view>
+          <view class="settings-desc">{{cacheText}}</view>
+        </view>
+        <button class="small-button" bindtap="clearLocalCache">清理</button>
+      </view>
+    </view>
+
+    <view class="soft-card settings-card">
+      <view class="settings-row">
+        <view>
+          <view class="settings-title">重新绑定教务账号</view>
+          <view class="settings-desc">跳转到绑定页，重新输入学号和教务系统密码。</view>
+        </view>
+        <button class="small-button" bindtap="rebindAccount">绑定</button>
+      </view>
+      <view class="settings-row danger-row">
+        <view>
+          <view class="settings-title">解除绑定</view>
+          <view class="settings-desc">删除云端绑定记录，并清空本机课程、成绩缓存。</view>
+        </view>
+        <button
+          class="small-button danger-button"
+          loading="{{unbinding}}"
+          disabled="{{unbinding}}"
+          bindtap="unbindAccount"
+        >
+          解绑
+        </button>
+      </view>
+    </view>
+
+    <view class="settings-note">清理缓存不会解除账号绑定；下次打开页面会重新从教务系统获取数据。</view>
+  </view>
+</view>

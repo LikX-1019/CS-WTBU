@@ -1,0 +1,148 @@
+.sub-page {
+  padding-bottom: 48rpx;
+}
+
+.nav-back {
+  position: absolute;
+  left: 32rpx;
+  bottom: 28rpx;
+  width: 44rpx;
+  height: 44rpx;
+  color: #101828;
+}
+
+.nav-back::before {
+  content: "";
+  position: absolute;
+  left: 15rpx;
+  top: 10rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(45deg);
+}
+
+.feedback-card {
+  padding: 30rpx 28rpx;
+  margin-bottom: 20rpx;
+}
+
+.field {
+  margin-bottom: 28rpx;
+}
+
+.label {
+  display: block;
+  margin-bottom: 14rpx;
+  color: #344054;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.picker-field,
+.input,
+.textarea {
+  width: 100%;
+  border: 1rpx solid #d8dee8;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #101828;
+  font-size: 28rpx;
+}
+
+.picker-field {
+  height: 82rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx;
+}
+
+.input {
+  height: 82rpx;
+  padding: 0 24rpx;
+}
+
+.textarea {
+  height: 220rpx;
+  padding: 22rpx 24rpx;
+  line-height: 1.45;
+}
+
+.chevron-down {
+  width: 16rpx;
+  height: 16rpx;
+  border-right: 3rpx solid #667085;
+  border-bottom: 3rpx solid #667085;
+  transform: rotate(45deg);
+  margin-top: -6rpx;
+}
+
+.counter {
+  margin-top: 10rpx;
+  color: #98a2b3;
+  font-size: 22rpx;
+  text-align: right;
+}
+
+.submit-button {
+  height: 88rpx;
+  border-radius: 12rpx;
+  background: #2f7bff;
+  color: #ffffff;
+  font-size: 30rpx;
+  line-height: 88rpx;
+}
+
+.history-card {
+  padding: 2rpx 28rpx;
+}
+
+.history-title {
+  margin: 26rpx 0 8rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.history-row {
+  min-height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.history-row:last-child {
+  border-bottom: 0;
+}
+
+.history-row > view {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-type {
+  margin-bottom: 10rpx;
+  color: #101828;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.history-content {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-row text {
+  flex: 0 0 110rpx;
+  color: #98a2b3;
+  font-size: 22rpx;
+  text-align: right;
+}

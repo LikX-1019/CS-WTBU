@@ -1,0 +1,89 @@
+.sub-page {
+  padding-bottom: 48rpx;
+}
+
+.nav-back {
+  position: absolute;
+  left: 32rpx;
+  bottom: 28rpx;
+  width: 44rpx;
+  height: 44rpx;
+  color: #101828;
+}
+
+.nav-back::before {
+  content: "";
+  position: absolute;
+  left: 15rpx;
+  top: 10rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(45deg);
+}
+
+.settings-card {
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+.settings-row {
+  min-height: 132rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 26rpx 28rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.settings-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-row > view:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-title {
+  margin-bottom: 12rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.settings-desc {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.small-button {
+  flex: 0 0 112rpx;
+  height: 60rpx;
+  border-radius: 10rpx;
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-size: 26rpx;
+  line-height: 60rpx;
+  text-align: center;
+}
+
+.danger-row .settings-title,
+.danger-button {
+  color: #e11d48;
+}
+
+.danger-button {
+  background: #fff1f2;
+}
+
+.settings-note {
+  padding: 0 8rpx;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
