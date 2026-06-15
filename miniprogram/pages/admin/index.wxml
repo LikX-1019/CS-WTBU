@@ -97,11 +97,11 @@
           <picker mode="selector" range="{{schools}}" range-key="name" value="{{configSchoolIndex}}" bindchange="onConfigSchoolChange">
             <view class="campus-input">{{configSchoolName || '选择学校'}}</view>
           </picker>
-          <input class="campus-input" placeholder="学期 ID" value="{{configSemesterId}}" bindinput="onConfigSemesterInput" />
-          <input class="campus-input campus-input-wide" placeholder="学期名称（可选）" value="{{configTerm}}" bindinput="onConfigTermInput" />
-          <picker mode="date" value="{{configWeekMondayDate}}" bindchange="onConfigDateChange">
-            <view class="campus-input">{{configWeekMondayDate}}</view>
+          <picker mode="selector" range="{{semesterPickerOptions}}" value="{{configSemesterIndex}}" bindchange="onConfigSemesterChange">
+            <view class="campus-input">{{configSemesterName || '暂无可选学期'}}</view>
           </picker>
+          <input class="campus-input campus-input-wide" placeholder="学期名称（可选）" value="{{configTerm}}" bindinput="onConfigTermInput" />
+          <view class="campus-input" bindtap="openCalendar">{{configWeekMondayDate}}</view>
           <picker mode="selector" range="{{weekOptions}}" value="{{configWeekIndex}}" bindchange="onConfigWeekChange">
             <view class="campus-input">第{{configWeekNumber}}周</view>
           </picker>
@@ -148,6 +148,32 @@
           <text>{{item.progress.winner ? item.progress.winner.termStartDate : '暂无'}}</text>
         </view>
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{calendarVisible}}" class="calendar-mask" bindtap="closeCalendar">
+    <view class="calendar-panel" catchtap="noop">
+      <view class="calendar-head">
+        <view class="calendar-nav" bindtap="previousCalendarMonth">‹</view>
+        <view class="calendar-title">{{calendarTitle}}</view>
+        <view class="calendar-nav" bindtap="nextCalendarMonth">›</view>
+      </view>
+      <view class="calendar-weekdays">
+        <view wx:for="{{calendarWeekdays}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view class="calendar-grid">
+        <view
+          wx:for="{{calendarDays}}"
+          wx:key="date"
+          class="calendar-day {{item.className}}"
+          data-date="{{item.date}}"
+          data-disabled="{{item.disabled}}"
+          bindtap="chooseCalendarDate"
+        >
+          {{item.day}}
+        </view>
+      </view>
+      <view class="calendar-hint">仅可选择周一日期</view>
     </view>
   </view>
 </view>

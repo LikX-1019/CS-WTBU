@@ -443,6 +443,95 @@ function formatTermWeekAdminItem(config, reports, sourceConfig, schoolName = '')
   };
 }
 
+function addAdminSemesterOption(optionMap, schoolId, schoolName, semesterId, label, term = '') {
+  const normalizedSchoolId = sanitizeText(schoolId, 80) || DEFAULT_SCHOOL_ID;
+  const normalizedSemesterId = sanitizeText(semesterId, 80);
+  const normalizedLabel = sanitizeText(label, 120) || sanitizeText(term, 120) || normalizedSemesterId;
+  const school = getSchool(normalizedSchoolId);
+
+  if (!normalizedSemesterId) {
+    return;
+  }
+
+  const key = getTermWeekConfigId(normalizedSchoolId, normalizedSemesterId);
+
+  if (optionMap.has(key)) {
+    const existing = optionMap.get(key);
+
+    if (!existing.term && term) {
+      existing.term = sanitizeText(term, 80);
+    }
+
+    return;
+  }
+
+  optionMap.set(key, {
+    schoolId: normalizedSchoolId,
+    schoolName: sanitizeText(schoolName, 80) || (school && school.name) || normalizedSchoolId,
+    id: normalizedSemesterId,
+    semesterId: normalizedSemesterId,
+    label: normalizedLabel === normalizedSemesterId ? normalizedSemesterId : `${normalizedLabel} (${normalizedSemesterId})`,
+    term: sanitizeText(term, 80) || normalizedLabel
+  });
+}
+
+function collectScheduleSemesterOptions(optionMap, binding, schedule) {
+  const schoolId = getSchoolIdFromBinding(binding);
+  const schoolName = binding && binding.schoolName || getSchoolOrThrow(schoolId).name;
+
+  if (!schedule || typeof schedule !== 'object') {
+    return;
+  }
+
+  (Array.isArray(schedule.semesters) ? schedule.semesters : []).forEach((semester) => {
+    addAdminSemesterOption(
+      optionMap,
+      schoolId,
+      schoolName,
+      semester && semester.id,
+      semester && (semester.label || semester.title),
+      semester && (semester.term || semester.label || semester.title)
+    );
+  });
+
+  addAdminSemesterOption(
+    optionMap,
+    schoolId,
+    schoolName,
+    schedule.selectedSemesterId,
+    schedule.term,
+    schedule.term
+  );
+}
+
+function buildAdminSemesterOptions(bindings, configs, reports) {
+  const optionMap = new Map();
+
+  (Array.isArray(bindings) ? bindings : []).forEach((binding) => {
+    collectScheduleSemesterOptions(optionMap, binding, binding && binding.lastSchedule);
+
+    Object.values(normalizeScheduleCaches(binding && binding.scheduleCaches)).forEach((entry) => {
+      collectScheduleSemesterOptions(optionMap, binding, entry && entry.schedule);
+    });
+  });
+
+  (Array.isArray(configs) ? configs : []).forEach((config) => {
+    addAdminSemesterOption(optionMap, config.schoolId, config.schoolName, config.semesterId, config.term, config.term);
+  });
+
+  (Array.isArray(reports) ? reports : []).forEach((report) => {
+    addAdminSemesterOption(optionMap, report.schoolId, report.schoolName, report.semesterId, report.term, report.term);
+  });
+
+  return [...optionMap.values()].sort((left, right) => {
+    if (left.schoolName !== right.schoolName) {
+      return String(left.schoolName || '').localeCompare(String(right.schoolName || ''));
+    }
+
+    return String(right.semesterId || '').localeCompare(String(left.semesterId || ''));
+  });
+}
+
 async function ensureTermWeekConfigFromReports(input, reports, source = 'user_aggregate', updatedBy = '') {
   const existing = await readTermWeekConfig(input.schoolId, input.semesterId);
 
@@ -622,8 +711,18 @@ async function adminListTermWeekConfigs(event = {}) {
     firstReportedAt: true,
     updatedAt: true
   }, 'firstReportedAt', 500);
+  const bindings = await getLatestDocuments(BINDING_COLLECTION, {
+    _id: true,
+    _openid: true,
+    schoolId: true,
+    schoolName: true,
+    lastSchedule: true,
+    scheduleCaches: true,
+    lastFetchedAt: true
+  }, 'lastFetchedAt', 200);
   const configMap = new Map();
   const reportGroups = groupTermWeekReports(reports);
+  const semesterOptions = buildAdminSemesterOptions(bindings, configs, reports);
 
   configs.forEach((config) => {
     const key = getTermWeekConfigId(config.schoolId, config.semesterId);
@@ -669,6 +768,7 @@ async function adminListTermWeekConfigs(event = {}) {
     success: true,
     data: {
       schools: listSchools(),
+      semesterOptions,
       items,
       summary: {
         configCount: configs.length,

@@ -14,6 +14,7 @@ const STATUS_OPTIONS = [
   { status: 'closed', label: '已关闭' }
 ];
 const WEEK_OPTIONS = Array.from({ length: 20 }, (_, index) => `第${index + 1}周`);
+const CALENDAR_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 function getStatusLabel(status) {
   const option = STATUS_OPTIONS.find((item) => item.status === status);
@@ -34,11 +35,88 @@ function formatDateInput(date = new Date()) {
 
   value.setDate(value.getDate() + offset);
 
+  return formatDateText(value);
+}
+
+function formatDateText(date) {
+  const value = new Date(date);
+
   return [
     value.getFullYear(),
     String(value.getMonth() + 1).padStart(2, '0'),
     String(value.getDate()).padStart(2, '0')
   ].join('-');
+}
+
+function parseDateText(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (!match) {
+    return new Date();
+  }
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function addDays(date, days) {
+  const value = new Date(date);
+  value.setDate(value.getDate() + days);
+
+  return value;
+}
+
+function formatCalendarTitle(date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+}
+
+function buildCalendarDays(monthDate, selectedDateText) {
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const gridStart = addDays(monthStart, -monthStart.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(gridStart, index);
+    const dateText = formatDateText(date);
+    const inMonth = date.getMonth() === monthDate.getMonth();
+    const isMonday = date.getDay() === 1;
+
+    return {
+      date: dateText,
+      day: date.getDate(),
+      inMonth,
+      disabled: !isMonday,
+      selected: dateText === selectedDateText,
+      className: [
+        inMonth ? '' : 'calendar-day-muted',
+        isMonday ? 'calendar-day-monday' : 'calendar-day-disabled',
+        dateText === selectedDateText ? 'calendar-day-selected' : ''
+      ].filter(Boolean).join(' ')
+    };
+  });
+}
+
+function buildCalendarState(dateText) {
+  const selectedDate = parseDateText(dateText);
+  const selectedDateText = formatDateText(selectedDate);
+  const monthDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+
+  return {
+    calendarMonthDate: formatDateText(monthDate),
+    calendarTitle: formatCalendarTitle(monthDate),
+    calendarDays: buildCalendarDays(monthDate, selectedDateText)
+  };
+}
+
+function normalizeSemesterOptions(options, schoolId) {
+  return (Array.isArray(options) ? options : [])
+    .filter((item) => !schoolId || item.schoolId === schoolId)
+    .map((item) => ({
+      id: String(item.id || item.semesterId || '').trim(),
+      label: item.label || item.term || item.semesterId || item.id || '未命名学期',
+      term: item.term || item.label || ''
+    }))
+    .filter((item) => item.id);
 }
 
 Page({
@@ -53,6 +131,9 @@ Page({
     users: [],
     feedback: [],
     schools: [],
+    semesterSourceOptions: [],
+    semesterOptions: [],
+    semesterPickerOptions: ['暂无可选学期'],
     termWeekItems: [],
     termWeekSummary: null,
     campusLoading: false,
@@ -61,10 +142,17 @@ Page({
     configSchoolIndex: 0,
     configSchoolName: '',
     configSemesterId: '',
+    configSemesterIndex: 0,
+    configSemesterName: '',
     configTerm: '',
     configWeekNumber: 1,
     configWeekIndex: 0,
     configWeekMondayDate: formatDateInput(),
+    calendarVisible: false,
+    calendarWeekdays: CALENDAR_WEEKDAYS,
+    calendarTitle: '',
+    calendarMonthDate: '',
+    calendarDays: [],
     loading: false,
     errorText: '',
     adminText: '',
@@ -160,9 +248,13 @@ Page({
         const items = Array.isArray(data.items) ? data.items : [];
         const selectedSchool = schools.find((school) => school.id === this.data.configSchoolId) || schools[0] || null;
         const selectedSchoolIndex = selectedSchool ? schools.findIndex((school) => school.id === selectedSchool.id) : 0;
+        const semesterSourceOptions = Array.isArray(data.semesterOptions) ? data.semesterOptions : [];
+        const semesterState = this.buildSemesterState(semesterSourceOptions, selectedSchool && selectedSchool.id);
 
         this.setData({
           schools,
+          semesterSourceOptions,
+          ...semesterState,
           termWeekItems: items,
           termWeekSummary: data.summary || null,
           configSchoolId: selectedSchool ? selectedSchool.id : '',
@@ -198,13 +290,47 @@ Page({
     this.setData({
       configSchoolId: school.id,
       configSchoolIndex: index,
-      configSchoolName: school.name
+      configSchoolName: school.name,
+      ...this.buildSemesterState(this.data.semesterSourceOptions, school.id)
     });
   },
 
-  onConfigSemesterInput(event) {
+  buildSemesterState(sourceOptions, schoolId, preferredSemesterId = '') {
+    const semesterOptions = normalizeSemesterOptions(sourceOptions, schoolId);
+    const targetId = preferredSemesterId || this.data.configSemesterId;
+    const matchedIndex = semesterOptions.findIndex((item) => item.id === targetId);
+    const selectedIndex = matchedIndex >= 0 ? matchedIndex : 0;
+    const selectedSemester = semesterOptions[selectedIndex] || null;
+
+    return {
+      semesterOptions,
+      semesterPickerOptions: semesterOptions.length > 0 ?
+        semesterOptions.map((item) => item.label) :
+        ['暂无可选学期'],
+      configSemesterIndex: selectedSemester ? selectedIndex : 0,
+      configSemesterId: selectedSemester ? selectedSemester.id : '',
+      configSemesterName: selectedSemester ? selectedSemester.label : '',
+      configTerm: selectedSemester ? (selectedSemester.term || this.data.configTerm) : ''
+    };
+  },
+
+  onConfigSemesterChange(event) {
+    const index = Number(event.detail.value) || 0;
+    const semester = this.data.semesterOptions[index];
+
+    if (!semester) {
+      wx.showToast({
+        title: '暂无可选学期',
+        icon: 'none'
+      });
+      return;
+    }
+
     this.setData({
-      configSemesterId: event.detail.value.trim()
+      configSemesterIndex: index,
+      configSemesterId: semester.id,
+      configSemesterName: semester.label,
+      configTerm: semester.term || this.data.configTerm
     });
   },
 
@@ -228,6 +354,57 @@ Page({
       configWeekMondayDate: event.detail.value
     });
   },
+
+  openCalendar() {
+    this.setData({
+      calendarVisible: true,
+      ...buildCalendarState(this.data.configWeekMondayDate)
+    });
+  },
+
+  closeCalendar() {
+    this.setData({
+      calendarVisible: false
+    });
+  },
+
+  previousCalendarMonth() {
+    const current = parseDateText(this.data.calendarMonthDate || this.data.configWeekMondayDate);
+    current.setMonth(current.getMonth() - 1);
+
+    this.setData({
+      ...buildCalendarState(formatDateText(current))
+    });
+  },
+
+  nextCalendarMonth() {
+    const current = parseDateText(this.data.calendarMonthDate || this.data.configWeekMondayDate);
+    current.setMonth(current.getMonth() + 1);
+
+    this.setData({
+      ...buildCalendarState(formatDateText(current))
+    });
+  },
+
+  chooseCalendarDate(event) {
+    const date = event.currentTarget.dataset.date;
+    const disabled = event.currentTarget.dataset.disabled;
+
+    if (disabled === true || disabled === 'true') {
+      wx.showToast({
+        title: '请选择周一日期',
+        icon: 'none'
+      });
+      return;
+    }
+
+    this.setData({
+      configWeekMondayDate: date,
+      calendarVisible: false
+    });
+  },
+
+  noop() {},
 
   async saveTermWeekConfig() {
     if (this.data.savingTermWeek) {
