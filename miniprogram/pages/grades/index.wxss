@@ -294,18 +294,21 @@
 .exam-detail-item {
   flex: 1 1 220rpx;
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
 }
 
 .exam-detail-label {
-  display: block;
-  margin-bottom: 8rpx;
+  flex: 0 0 auto;
   color: #98a2b3;
   font-size: 21rpx;
   line-height: 1;
 }
 
 .exam-detail-value {
-  display: block;
+  flex: 1;
+  min-width: 0;
   color: #344054;
   font-size: 24rpx;
   line-height: 1.3;

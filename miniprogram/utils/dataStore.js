@@ -1,35 +1,138 @@
 const { callGetSchedule } = require('./api');
 
+const CACHE_SCHEMA_VERSION = 2;
+
 const store = {
   schedule: null,
   profile: null,
   grades: null,
+  termWeek: null,
   loadingSchedule: null,
   loadingProfile: null,
   loadingGrades: null,
+  loadingTermWeek: null,
   sessionScheduleLoaded: false,
   sessionGradesLoaded: false
 };
 
+function getTermWeekCacheKey(schoolId, semesterId) {
+  return `${String(schoolId || '').trim()}::${String(semesterId || '').trim()}`;
+}
+
+function normalizeTermWeekData(data) {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const config = data.config || null;
+
+  return Object.assign({}, data, {
+    config,
+    report: data.report || null,
+    progress: data.progress || null,
+    termStartDate: config && config.termStartDate ? String(config.termStartDate) : '',
+    canSubmitReport: Boolean(data.canSubmitReport)
+  });
+}
+
+function getScheduleTermWeekMeta(schedule, options = {}) {
+  const source = schedule || {};
+  const school = source.school || {};
+
+  return {
+    schoolId: String(options.schoolId || school.id || source.schoolId || '').trim(),
+    semesterId: String(options.semesterId || source.selectedSemesterId || '').trim(),
+    term: String(options.term || source.term || '').trim()
+  };
+}
+
+function applyTermWeekToSchedule(schedule, termWeek) {
+  const data = Object.assign({}, schedule || {});
+  const normalized = normalizeTermWeekData(termWeek);
+  const termStartDate = normalized && normalized.termStartDate ? normalized.termStartDate : '';
+
+  data.termWeek = normalized;
+  data.termWeekConfig = normalized ? normalized.config : null;
+  data.termWeekReport = normalized ? normalized.report : null;
+  data.termWeekProgress = normalized ? normalized.progress : null;
+  data.canSubmitTermWeekReport = normalized ? normalized.canSubmitReport : false;
+  data.termStartDate = termStartDate;
+
+  return data;
+}
+
+async function loadTermWeekConfig(schedule, options = {}) {
+  const meta = getScheduleTermWeekMeta(schedule, options);
+
+  if (!meta.schoolId || !meta.semesterId) {
+    return null;
+  }
+
+  const cacheKey = getTermWeekCacheKey(meta.schoolId, meta.semesterId);
+
+  if (!options.force && store.termWeek && store.termWeekCacheKey === cacheKey) {
+    return store.termWeek;
+  }
+
+  if (!options.force && store.loadingTermWeek && store.loadingTermWeekKey === cacheKey) {
+    return store.loadingTermWeek;
+  }
+
+  store.loadingTermWeekKey = cacheKey;
+  store.loadingTermWeek = callGetSchedule({
+    action: 'getTermWeekConfig',
+    schoolId: meta.schoolId,
+    semesterId: meta.semesterId,
+    term: meta.term
+  }, '学期起始周配置加载失败')
+    .then((data) => {
+      const normalized = normalizeTermWeekData(data);
+
+      store.termWeek = normalized;
+      store.termWeekCacheKey = cacheKey;
+
+      return normalized;
+    })
+    .finally(() => {
+      store.loadingTermWeek = null;
+      store.loadingTermWeekKey = '';
+    });
+
+  return store.loadingTermWeek;
+}
+
+async function loadScheduleWithTermWeek(schedule, options = {}) {
+  const termWeek = await loadTermWeekConfig(schedule, options);
+  return applyTermWeekToSchedule(schedule, termWeek);
+}
+
+function isCurrentCache(data) {
+  return data && Number(data.cacheVersion) === CACHE_SCHEMA_VERSION;
+}
+
 function getScheduleCache() {
-  if (store.schedule) {
+  if (isCurrentCache(store.schedule)) {
     return store.schedule;
   }
 
   try {
-    return wx.getStorageSync('scheduleData') || null;
+    const cached = wx.getStorageSync('scheduleData') || null;
+
+    return isCurrentCache(cached) ? cached : null;
   } catch (error) {
     return null;
   }
 }
 
 function getGradesCache() {
-  if (store.grades) {
+  if (isCurrentCache(store.grades)) {
     return store.grades;
   }
 
   try {
-    return wx.getStorageSync('gradesData') || null;
+    const cached = wx.getStorageSync('gradesData') || null;
+
+    return isCurrentCache(cached) ? cached : null;
   } catch (error) {
     return null;
   }
@@ -52,8 +155,14 @@ async function loadSchedule(options = {}) {
     const cached = store.sessionScheduleLoaded ? getScheduleCache() : null;
 
     if (cached) {
-      store.schedule = cached;
-      return cached;
+      const data = await loadScheduleWithTermWeek(cached, {
+        force: true,
+        semesterId: options.semesterId || cached.selectedSemesterId
+      });
+
+      store.schedule = data;
+      wx.setStorageSync('scheduleData', data);
+      return data;
     }
 
     if (store.loadingSchedule) {
@@ -67,7 +176,17 @@ async function loadSchedule(options = {}) {
     requestData.semesterId = options.semesterId;
   }
 
+  if (options.force) {
+    requestData.force = true;
+  }
+
   store.loadingSchedule = callGetSchedule(requestData, '课表加载失败')
+    .then((data) => {
+      return loadScheduleWithTermWeek(data, {
+        force: Boolean(options.force),
+        semesterId: requestData.semesterId
+      });
+    })
     .then((data) => {
       store.schedule = data;
       store.sessionScheduleLoaded = true;
@@ -95,7 +214,13 @@ async function loadGrades(options = {}) {
     }
   }
 
-  store.loadingGrades = callGetSchedule({ action: 'grades' }, '成绩加载失败')
+  const requestData = { action: 'grades' };
+
+  if (options.force) {
+    requestData.force = true;
+  }
+
+  store.loadingGrades = callGetSchedule(requestData, '成绩加载失败')
     .then((data) => {
       store.grades = data;
       store.sessionGradesLoaded = true;
@@ -146,6 +271,29 @@ async function saveProfile(profile) {
   return data;
 }
 
+async function submitTermWeekReport(schedule, report) {
+  const meta = getScheduleTermWeekMeta(schedule);
+  const data = await callGetSchedule({
+    action: 'submitTermWeekReport',
+    schoolId: meta.schoolId,
+    semesterId: meta.semesterId,
+    term: meta.term,
+    weekNumber: report && report.weekNumber,
+    weekMondayDate: report && report.weekMondayDate
+  }, '学期起始周上报失败');
+  const normalized = normalizeTermWeekData(data);
+
+  store.termWeek = normalized;
+  store.termWeekCacheKey = getTermWeekCacheKey(meta.schoolId, meta.semesterId);
+
+  if (store.schedule) {
+    store.schedule = applyTermWeekToSchedule(store.schedule, normalized);
+    wx.setStorageSync('scheduleData', store.schedule);
+  }
+
+  return normalized;
+}
+
 async function refreshEduCache() {
   const data = await callGetSchedule({ action: 'refreshAll' }, '教务系统更新失败');
 
@@ -190,9 +338,13 @@ function clearAll() {
   store.schedule = null;
   store.profile = null;
   store.grades = null;
+  store.termWeek = null;
   store.loadingSchedule = null;
   store.loadingProfile = null;
   store.loadingGrades = null;
+  store.loadingTermWeek = null;
+  store.loadingTermWeekKey = '';
+  store.termWeekCacheKey = '';
   store.sessionScheduleLoaded = false;
   store.sessionGradesLoaded = false;
   wx.removeStorageSync('scheduleData');
@@ -208,8 +360,10 @@ module.exports = {
   loadGrades,
   loadProfile,
   loadSchedule,
+  loadTermWeekConfig,
   refreshEduCache,
   saveProfile,
+  submitTermWeekReport,
   setGrades,
   setProfile,
   setSchedule

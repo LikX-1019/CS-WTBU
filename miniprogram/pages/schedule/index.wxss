@@ -98,7 +98,6 @@
 .lesson-block {
   position: absolute;
   z-index: 2;
-  margin: 12rpx 10rpx;
   padding: 18rpx 10rpx;
   border-radius: 10rpx;
   display: flex;
@@ -168,6 +167,95 @@
 .state-error {
   color: #e11d48;
   background: #fff1f2;
+}
+
+.term-week-card {
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.term-week-locked {
+  background: #f0fdfa;
+}
+
+.term-week-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.term-week-head > view:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.term-week-title {
+  margin-bottom: 10rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.term-week-subtitle,
+.term-week-note {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.term-week-badge {
+  flex: 0 0 auto;
+  min-width: 112rpx;
+  height: 48rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #047857;
+  background: #ccfbf1;
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+.term-week-form {
+  display: grid;
+  grid-template-columns: 1fr 150rpx 132rpx;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.term-week-input {
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid #d8dee8;
+  border-radius: 12rpx;
+  color: #101828;
+  background: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.term-week-button {
+  height: 64rpx;
+  border-radius: 12rpx;
+  color: #ffffff;
+  background: #2563eb;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 64rpx;
+}
+
+.term-week-button[disabled] {
+  color: rgba(255, 255, 255, 0.78);
+  background: #93c5fd;
+}
+
+.term-week-note {
+  margin-top: 16rpx;
 }
 
 .empty-schedule {

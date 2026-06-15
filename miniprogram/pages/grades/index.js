@@ -15,6 +15,53 @@ const EMPTY_EXAM_SUMMARY = {
   subtitle: ''
 };
 
+function parseSemesterTitle(title) {
+  const text = String(title || '').trim();
+  const rangeMatch = text.match(/(20\d{2})\s*[-/]\s*(20\d{2})/);
+  const singleYearMatch = rangeMatch ? null : text.match(/(20\d{2})/);
+  const startYear = rangeMatch ? Number(rangeMatch[1]) : (singleYearMatch ? Number(singleYearMatch[1]) : -1);
+  const endYear = rangeMatch ? Number(rangeMatch[2]) : startYear;
+  let termIndex = 0;
+
+  if (/(?:第?\s*2\s*学期|学期\s*2|第?\s*二\s*学期|下学期|春学期)/.test(text)) {
+    termIndex = 2;
+  } else if (/(?:第?\s*1\s*学期|学期\s*1|第?\s*一\s*学期|上学期|秋学期)/.test(text)) {
+    termIndex = 1;
+  }
+
+  return {
+    startYear,
+    endYear,
+    termIndex,
+    text
+  };
+}
+
+function compareSemesterTitle(left, right) {
+  const leftMeta = parseSemesterTitle(left);
+  const rightMeta = parseSemesterTitle(right);
+
+  if (leftMeta.startYear !== rightMeta.startYear) {
+    return leftMeta.startYear - rightMeta.startYear;
+  }
+
+  if (leftMeta.endYear !== rightMeta.endYear) {
+    return leftMeta.endYear - rightMeta.endYear;
+  }
+
+  if (leftMeta.termIndex !== rightMeta.termIndex) {
+    return leftMeta.termIndex - rightMeta.termIndex;
+  }
+
+  return leftMeta.text.localeCompare(rightMeta.text);
+}
+
+function normalizeGradeSemesters(semesters = []) {
+  return semesters
+    .slice()
+    .sort((left, right) => compareSemesterTitle(right.title || '', left.title || ''));
+}
+
 function buildExamItems(exams, previousExams = []) {
   const expandedById = Object.create(null);
 
@@ -129,7 +176,7 @@ Page({
 
       this.setData({
         summary: Array.isArray(data.summary) ? data.summary : EMPTY_SUMMARY,
-        semesters: Array.isArray(data.semesters) ? data.semesters : [],
+        semesters: normalizeGradeSemesters(Array.isArray(data.semesters) ? data.semesters : []),
         exams,
         examSummary: buildExamSummary(exams)
       });

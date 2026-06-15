@@ -11,8 +11,11 @@ const wtbu = localRequire('./schools/wtbu');
 const { getSchool } = localRequire('./schools');
 const parseGrades = wtbu.__test__.parseGrades;
 const parseExams = wtbu.__test__.parseExams;
+const fetchExams = wtbu.__test__.fetchExams;
 const findExamBatches = wtbu.__test__.findExamBatches;
+const getExamBatchPaths = wtbu.__test__.getExamBatchPaths;
 const mergeExams = wtbu.__test__.mergeExams;
+const setExamBatchFetchDelayMs = wtbu.__test__.setExamBatchFetchDelayMs;
 
 process.env.EDU_PASSWORD_SECRET = 'a'.repeat(64);
 
@@ -49,6 +52,10 @@ function parse(html) {
   return JSON.parse(JSON.stringify(
     parseGrades(html, '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f')
   ));
+}
+
+function toPlain(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function getFirstGrade(result) {
@@ -100,6 +107,15 @@ const weightedAverage = parse(`
 
 assert.strictEqual(getSummaryValue(weightedAverage, '\u5e73\u5747\u5206'), '88');
 assert.strictEqual(weightedAverage.semesters[0].average, '88');
+
+const orderedSemesters = parse(`
+<table>
+  <tr><th>\u5b66\u5e74\u5b66\u671f</th><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
+  <tr><td>2024-2025\u5b66\u5e74\u7b2c\u4e00\u5b66\u671f</td><td>\u79bb\u6563\u6570\u5b66</td><td>4</td><td>90</td><td>4.0</td></tr>
+  <tr><td>2025-2026\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f</td><td>\u7ebf\u6027\u4ee3\u6570</td><td>4</td><td>95</td><td>4.5</td></tr>
+</table>`);
+
+assert.strictEqual(orderedSemesters.semesters[0].title, '2025-2026\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f');
 
 const arrangedExams = parseExams(`
 <table>
@@ -170,6 +186,147 @@ assert.deepStrictEqual(examBatches.map((batch) => ({
 ]);
 assert.strictEqual(mergeExams([arrangedExams, arrangedExams]).length, arrangedExams.length);
 
+assert.deepStrictEqual(getExamBatchPaths({ id: '1428' }), [
+  '/eams/stdExamTable!examTable.action?examBatch.id=1428',
+  '/eams/stdExamTable.action?examBatch.id=1428',
+  '/eams/examTableForStd.action?examBatch.id=1428'
+]);
+
+const firstBatchExam = parseExams(`
+<table>
+  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
+  <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
+</table>`, {
+  id: '1412',
+  name: '\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09'
+});
+
+const secondBatchExam = parseExams(`
+<table>
+  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
+  <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
+</table>`, {
+  id: '1428',
+  name: '\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09'
+});
+
+const sameCourseDifferentBatches = mergeExams([firstBatchExam, secondBatchExam]);
+assert.strictEqual(sameCourseDifferentBatches.length, 2);
+assert.deepStrictEqual(
+  sameCourseDifferentBatches.map((exam) => exam.batchId),
+  ['1412', '1428']
+);
+
+async function runFetchExamBatchTests() {
+  const defaultHtml = `
+  <select name="examBatch.id">
+    <option value="1428" selected>\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09</option>
+    <option value="1427">\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09</option>
+  </select>
+  <table>
+    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
+    <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
+  </table>`;
+  const firstBatchHtml = `
+  <table>
+    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
+    <tr><td>\u6bdb\u6982</td><td>2026-06-18</td><td>10:30~12:10</td><td>\u5f18\u5fb7\u697c308</td><td>70</td><td>\u6b63\u5e38</td></tr>
+  </table>`;
+  const requestedPaths = [];
+  const requestCounts = new Map();
+  const client = {
+    get(path) {
+      requestedPaths.push(path);
+      requestCounts.set(path, (requestCounts.get(path) || 0) + 1);
+
+      if (path === '/eams/stdExamTable.action') {
+        return Promise.resolve({ data: defaultHtml });
+      }
+
+      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1427') {
+        if (requestCounts.get(path) === 1) {
+          return Promise.resolve({ data: '\u8bf7\u4e0d\u8981\u8fc7\u5feb\u70b9\u51fb' });
+        }
+
+        return Promise.resolve({ data: firstBatchHtml });
+      }
+
+      return Promise.resolve({ data: '' });
+    }
+  };
+
+  setExamBatchFetchDelayMs(0);
+
+  let exams;
+
+  try {
+    exams = await fetchExams(client, '');
+  } finally {
+    setExamBatchFetchDelayMs(1600);
+  }
+
+  assert.deepStrictEqual(exams.map((exam) => ({
+    batchId: exam.batchId,
+    name: exam.name
+  })), [
+    { batchId: '1428', name: '\u5927\u5b66\u82f1\u8bed\uff084\uff09' },
+    { batchId: '1427', name: '\u6bdb\u6982' }
+  ]);
+  assert.strictEqual(
+    requestedPaths.includes('/eams/stdExamTable!examTable.action?examBatch.id=1428'),
+    false
+  );
+  assert.strictEqual(requestCounts.get('/eams/stdExamTable!examTable.action?examBatch.id=1427'), 2);
+
+  const emptyCurrentHtml = `
+  <select name="examBatch.id">
+    <option value="1428" selected>\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09</option>
+    <option value="1427">\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09</option>
+  </select>`;
+  const secondBatchHtml = `
+  <table>
+    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
+    <tr><td>\u9ad8\u7b49\u6570\u5b66</td><td>2026-07-04</td><td>08:30~10:10</td><td>\u5f18\u5fb7\u697c408</td><td>18</td><td>\u6b63\u5e38</td></tr>
+  </table>`;
+  const fallbackRequests = [];
+  const fallbackClient = {
+    get(path) {
+      fallbackRequests.push(path);
+
+      if (path === '/eams/stdExamTable.action') {
+        return Promise.resolve({ data: emptyCurrentHtml });
+      }
+
+      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1428') {
+        return Promise.resolve({ data: secondBatchHtml });
+      }
+
+      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1427') {
+        return Promise.resolve({ data: firstBatchHtml });
+      }
+
+      return Promise.resolve({ data: '' });
+    }
+  };
+
+  setExamBatchFetchDelayMs(0);
+
+  try {
+    exams = await fetchExams(fallbackClient, '');
+  } finally {
+    setExamBatchFetchDelayMs(1600);
+  }
+
+  assert.deepStrictEqual(exams.map((exam) => ({
+    batchId: exam.batchId,
+    name: exam.name
+  })), [
+    { batchId: '1428', name: '\u9ad8\u7b49\u6570\u5b66' },
+    { batchId: '1427', name: '\u6bdb\u6982' }
+  ]);
+  assert.ok(fallbackRequests.includes('/eams/stdExamTable!examTable.action?examBatch.id=1428'));
+}
+
 function createSchedule(id) {
   return {
     term: `term-${id}`,
@@ -186,14 +343,21 @@ function createGrades(id) {
   };
 }
 
+function createCachedGrades(id) {
+  return Object.assign(createGrades(id), {
+    cacheVersion: 2
+  });
+}
+
 function createBinding(overrides = {}) {
   return Object.assign({
     studentId: '20260001',
     passwordCipher: context.encryptPassword('pw'),
     lastSchedule: createSchedule('current'),
     lastExams: [{ id: 'exam-current' }],
-    lastGrades: createGrades('current'),
+    lastGrades: createCachedGrades('current'),
     lastFetchedAt: new Date().toISOString(),
+    cacheVersion: 2,
     scheduleCaches: {}
   }, overrides);
 }
@@ -239,6 +403,8 @@ function useFakeDb(binding) {
 }
 
 async function runCacheTests() {
+  await runFetchExamBatchTests();
+
   const schoolsResult = await context.exports.main({ action: 'schools' });
 
   assert.strictEqual(schoolsResult.success, true);
@@ -276,7 +442,9 @@ async function runCacheTests() {
   await context.updateGradesCache('openid-1', cachedGrades);
   assert.strictEqual(capturedUpdate.name, 'eduAccountBindings');
   assert.strictEqual(capturedUpdate.id, 'openid-1');
-  assert.deepStrictEqual(capturedUpdate.options.data.lastGrades, { __set: cachedGrades });
+  assert.deepStrictEqual(toPlain(capturedUpdate.options.data.lastGrades), {
+    __set: Object.assign({}, cachedGrades, { cacheVersion: 2 })
+  });
   assert.strictEqual(capturedUpdate.options.data.updatedAt, 'SERVER_DATE');
 
   let fetchAllCalls = 0;
@@ -292,7 +460,41 @@ async function runCacheTests() {
   assert.strictEqual(fetchAllCalls, 0);
   assert.strictEqual(freshSchedule.data.term, freshBinding.lastSchedule.term);
   assert.deepStrictEqual(freshSchedule.data.exams, freshBinding.lastExams);
-  assert.deepStrictEqual(freshGrades.data, freshBinding.lastGrades);
+  assert.deepStrictEqual(toPlain(freshGrades.data), freshBinding.lastGrades);
+
+  const legacyVersionBinding = createBinding({ cacheVersion: 1 });
+  useFakeDb(legacyVersionBinding);
+  let legacyVersionFetchCalls = 0;
+  context.fetchAllByCredentials = async () => {
+    legacyVersionFetchCalls += 1;
+    return {
+      schedule: createSchedule('legacy-version'),
+      exams: [{ id: 'exam-legacy-version' }],
+      grades: createGrades('legacy-version'),
+      profile: null
+    };
+  };
+  const legacyVersionSchedule = await context.getBoundSchedule();
+
+  assert.strictEqual(legacyVersionFetchCalls, 1);
+  assert.strictEqual(legacyVersionSchedule.data.term, 'term-legacy-version');
+
+  fetchAllCalls = 0;
+  context.fetchAllByCredentials = async () => {
+    fetchAllCalls += 1;
+    return {
+      schedule: createSchedule('forced'),
+      exams: [{ id: 'exam-forced' }],
+      grades: createGrades('forced'),
+      profile: null
+    };
+  };
+  const forcedSchedule = await context.getBoundSchedule({ force: true });
+  const forcedGrades = await context.getBoundGrades({ force: true });
+
+  assert.strictEqual(fetchAllCalls, 2);
+  assert.strictEqual(forcedSchedule.data.term, 'term-forced');
+  assert.deepStrictEqual(toPlain(forcedGrades.data), createCachedGrades('forced'));
 
   const expiredBinding = createBinding({
     lastFetchedAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString()
@@ -316,7 +518,7 @@ async function runCacheTests() {
   assert.strictEqual(fetchAllCalls, 1);
   assert.strictEqual(expiredSchedule.data.term, 'term-refreshed');
   assert.strictEqual(expiredState.updates.length, 1);
-  assert.deepStrictEqual(expiredState.updates[0].options.data.lastGrades, { __set: createGrades('refreshed') });
+  assert.deepStrictEqual(toPlain(expiredState.updates[0].options.data.lastGrades), { __set: createCachedGrades('refreshed') });
   assert.strictEqual(expiredState.updates[0].options.data.schoolId, 'wtbu');
   assert.strictEqual(expiredState.updates[0].options.data.schoolName, '武汉工商学院');
   assert.ok(expiredState.updates[0].options.data.lastFetchedAt);
@@ -358,7 +560,7 @@ async function runCacheTests() {
   assert.strictEqual(manualResult.success, true);
   assert.strictEqual(fetchAllCalls, 1);
   assert.strictEqual(manualResult.data.schedule.term, 'term-manual');
-  assert.deepStrictEqual(manualResult.data.grades, createGrades('manual'));
+  assert.deepStrictEqual(toPlain(manualResult.data.grades), createCachedGrades('manual'));
   assert.ok(manualResult.data.refreshedAt);
   assert.strictEqual(manualState.updates.length, 1);
 
@@ -367,6 +569,7 @@ async function runCacheTests() {
       2024: {
         schedule: createSchedule('2024'),
         exams: [{ id: 'exam-2024' }],
+        cacheVersion: 2,
         fetchedAt: new Date().toISOString()
       }
     }

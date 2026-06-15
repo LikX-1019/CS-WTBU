@@ -35,7 +35,35 @@
     <view wx:if="{{loading}}" class="soft-card state-card">正在从教务系统加载课表...</view>
     <view wx:elif="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
 
-    <view class="timetable">
+    <view wx:if="{{!errorText && currentSchedule}}" class="soft-card term-week-card {{termWeekConfig ? 'term-week-locked' : ''}}">
+      <view class="term-week-head">
+        <view>
+          <view class="term-week-title">{{termWeekConfig ? '学期起始周已配置' : '补充学期起始周'}}</view>
+          <view class="term-week-subtitle">{{termWeekProgressText}}</view>
+        </view>
+        <view wx:if="{{termWeekConfig}}" class="term-week-badge">{{termWeekConfig.sourceText}}</view>
+      </view>
+      <view wx:if="{{canSubmitTermWeekReport}}" class="term-week-form">
+        <picker mode="date" value="{{reportWeekMondayDate}}" bindchange="onReportDateChange">
+          <view class="term-week-input">{{reportWeekMondayDate}}</view>
+        </picker>
+        <picker mode="selector" range="{{weekOptions}}" value="{{reportWeekIndex}}" bindchange="onReportWeekChange">
+          <view class="term-week-input">第{{reportWeekNumber}}周</view>
+        </picker>
+        <button class="term-week-button" loading="{{submittingTermWeek}}" disabled="{{submittingTermWeek}}" bindtap="submitTermWeekReport">
+          上报
+        </button>
+      </view>
+      <view wx:elif="{{termWeekReport && !termWeekConfig}}" class="term-week-note">
+        已上报：{{termWeekReport.weekMondayDate}} · 第{{termWeekReport.weekNumber}}周
+      </view>
+    </view>
+
+    <view
+      class="timetable"
+      bindtouchstart="onScheduleTouchStart"
+      bindtouchend="onScheduleTouchEnd"
+    >
       <view
         wx:for="{{days}}"
         wx:key="week"

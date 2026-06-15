@@ -4,7 +4,7 @@
   "description": "Fetch course schedule from educational administration system",
   "main": "index.js",
   "scripts": {
-    "test": "node test/gradeParser.test.js"
+    "test": "node test/gradeParser.test.js && node test/termWeekConfig.test.js"
   },
   "dependencies": {
     "axios": "^1.7.9",

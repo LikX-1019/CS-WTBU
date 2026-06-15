@@ -24,6 +24,12 @@ const EXAM_STATUS_PRIORITY = {
   completed: 1,
   unscheduled: 2
 };
+const DAY_COLUMN_LEFT_PERCENT = 12;
+const DAY_COLUMN_WIDTH_PERCENT = 12.57;
+const SECTION_TOP_OFFSET_RPX = 100;
+const SECTION_HEIGHT_RPX = 110;
+const LESSON_HORIZONTAL_GAP_RPX = 3;
+const LESSON_VERTICAL_GAP_RPX = 3;
 
 function pad(value) {
   return String(value).padStart(2, '0');
@@ -46,7 +52,34 @@ function createDate(year, month, day) {
   return new Date(year, month - 1, day);
 }
 
-function getTermStartDate() {
+function parseTermStartDate(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const date = createDate(Number(match[1]), Number(match[2]), Number(match[3]));
+
+  if (
+    date.getFullYear() !== Number(match[1]) ||
+    date.getMonth() !== Number(match[2]) - 1 ||
+    date.getDate() !== Number(match[3])
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getTermStartDate(termStartDate) {
+  const configuredDate = parseTermStartDate(termStartDate);
+
+  if (configuredDate) {
+    return configuredDate;
+  }
+
   return createDate(TERM_START.year, TERM_START.month, TERM_START.day);
 }
 
@@ -65,15 +98,17 @@ function clampWeek(week) {
   return Math.min(Math.max(Number(week) || 1, 1), MAX_WEEK_COUNT);
 }
 
-function getCurrentTeachingWeek(date = new Date()) {
+function getCurrentTeachingWeek(date = new Date(), termStartDate = '') {
   const today = getDayStart(date);
-  const diffDays = Math.floor((today.getTime() - getTermStartDate().getTime()) / MS_PER_DAY);
+  const diffDays = Math.floor((today.getTime() - getTermStartDate(termStartDate).getTime()) / MS_PER_DAY);
 
   return clampWeek(Math.floor(diffDays / 7) + 1);
 }
 
-function getWeekStartDate(week = getCurrentTeachingWeek()) {
-  return addDays(getTermStartDate(), (clampWeek(week) - 1) * 7);
+function getWeekStartDate(week, termStartDate = '') {
+  const currentWeek = week == null ? getCurrentTeachingWeek(new Date(), termStartDate) : week;
+
+  return addDays(getTermStartDate(termStartDate), (clampWeek(currentWeek) - 1) * 7);
 }
 
 function formatShortDate(date) {
@@ -193,9 +228,9 @@ function isCourseActiveInWeek(course, week) {
   return course.weeks.includes(week);
 }
 
-function getTodayCourses(courses) {
+function getTodayCourses(courses, termStartDate = '') {
   const weekday = getCurrentWeekday();
-  const week = getCurrentTeachingWeek();
+  const week = getCurrentTeachingWeek(new Date(), termStartDate);
 
   return normalizeCourses(courses)
     .filter((course) => course.weekday === weekday && isCourseActiveInWeek(course, week))
@@ -391,9 +426,9 @@ function normalizeExamItems(exams, now = new Date()) {
     });
 }
 
-function getTodayScheduleItems(courses, exams) {
+function getTodayScheduleItems(courses, exams, termStartDate = '') {
   return [
-    ...getTodayCourses(courses),
+    ...getTodayCourses(courses, termStartDate),
     ...getTodayExams(exams)
   ].sort((a, b) => {
     const timeCompare = String(a.sortTime || '99:99').localeCompare(String(b.sortTime || '99:99'));
@@ -406,8 +441,9 @@ function getTodayScheduleItems(courses, exams) {
   });
 }
 
-function buildDays(week = getCurrentTeachingWeek()) {
-  const start = getWeekStartDate(clampWeek(week));
+function buildDays(week, termStartDate = '') {
+  const currentWeek = week == null ? getCurrentTeachingWeek(new Date(), termStartDate) : week;
+  const start = getWeekStartDate(clampWeek(currentWeek), termStartDate);
 
   return WEEKDAY_TEXT.slice(1).map((week, index) => {
     const date = new Date(start);
@@ -465,18 +501,18 @@ function buildLessons(courses, week = getCurrentTeachingWeek()) {
         ].filter((row) => row.value),
         tone: course.tone,
         style: [
-          `left: ${12 + (course.weekday - 1) * 12.57}%`,
-          `top: ${100 + (firstSection - 1) * 110}rpx`,
-          'width: 12.57%',
-          `height: ${span * 110}rpx`
+          `left: calc(${DAY_COLUMN_LEFT_PERCENT + (course.weekday - 1) * DAY_COLUMN_WIDTH_PERCENT}% + ${LESSON_HORIZONTAL_GAP_RPX}rpx)`,
+          `top: ${SECTION_TOP_OFFSET_RPX + (firstSection - 1) * SECTION_HEIGHT_RPX + LESSON_VERTICAL_GAP_RPX}rpx`,
+          `width: calc(${DAY_COLUMN_WIDTH_PERCENT}% - ${LESSON_HORIZONTAL_GAP_RPX * 2}rpx)`,
+          `height: ${span * SECTION_HEIGHT_RPX - LESSON_VERTICAL_GAP_RPX * 2}rpx`
         ].join('; ')
       };
     });
 }
 
-function formatWeekText(term, week = getCurrentTeachingWeek()) {
-  const currentWeek = clampWeek(week);
-  const start = getWeekStartDate(currentWeek);
+function formatWeekText(term, week, termStartDate = '') {
+  const currentWeek = clampWeek(week == null ? getCurrentTeachingWeek(new Date(), termStartDate) : week);
+  const start = getWeekStartDate(currentWeek, termStartDate);
   const end = addDays(start, 6);
 
   return `第${currentWeek}周 (${formatShortDate(start)}-${formatShortDate(end)})`;

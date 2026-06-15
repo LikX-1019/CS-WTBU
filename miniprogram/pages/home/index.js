@@ -45,8 +45,8 @@ Page({
       const data = await loadSchedule(options);
 
       this.setData({
-        weekText: formatWeekText(data.term),
-        items: getTodayScheduleItems(data.courses, data.exams),
+        weekText: formatWeekText(data.term, undefined, data.termStartDate),
+        items: getTodayScheduleItems(data.courses, data.exams, data.termStartDate),
         lastFetchedText: formatFetchTime(data.lastFetchedAt)
       });
     } catch (error) {

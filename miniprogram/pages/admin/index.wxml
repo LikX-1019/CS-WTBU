@@ -89,5 +89,65 @@
         <view wx:if="{{item.contact}}" class="contact-row">联系方式：{{item.contact}}</view>
       </view>
     </view>
+
+    <view wx:if="{{!errorText && activeTab === 'campus'}}" class="list-panel">
+      <view class="soft-card campus-form">
+        <view class="item-title">学期起始周配置</view>
+        <view class="campus-grid">
+          <picker mode="selector" range="{{schools}}" range-key="name" value="{{configSchoolIndex}}" bindchange="onConfigSchoolChange">
+            <view class="campus-input">{{configSchoolName || '选择学校'}}</view>
+          </picker>
+          <input class="campus-input" placeholder="学期 ID" value="{{configSemesterId}}" bindinput="onConfigSemesterInput" />
+          <input class="campus-input campus-input-wide" placeholder="学期名称（可选）" value="{{configTerm}}" bindinput="onConfigTermInput" />
+          <picker mode="date" value="{{configWeekMondayDate}}" bindchange="onConfigDateChange">
+            <view class="campus-input">{{configWeekMondayDate}}</view>
+          </picker>
+          <picker mode="selector" range="{{weekOptions}}" value="{{configWeekIndex}}" bindchange="onConfigWeekChange">
+            <view class="campus-input">第{{configWeekNumber}}周</view>
+          </picker>
+          <button class="campus-save" loading="{{savingTermWeek}}" disabled="{{savingTermWeek}}" bindtap="saveTermWeekConfig">
+            保存
+          </button>
+        </view>
+      </view>
+
+      <view wx:if="{{termWeekSummary}}" class="campus-summary">
+        <view class="soft-card campus-summary-card">
+          <view class="stat-value">{{termWeekSummary.configCount}}</view>
+          <view class="stat-label">官方配置</view>
+        </view>
+        <view class="soft-card campus-summary-card">
+          <view class="stat-value">{{termWeekSummary.reportCount}}</view>
+          <view class="stat-label">用户上报</view>
+        </view>
+        <view class="soft-card campus-summary-card">
+          <view class="stat-value">{{termWeekSummary.readyCount}}</view>
+          <view class="stat-label">可聚合</view>
+        </view>
+      </view>
+
+      <view wx:if="{{termWeekItems.length === 0 && !campusLoading}}" class="soft-card empty-card">暂无学期周配置</view>
+      <view wx:for="{{termWeekItems}}" wx:key="id" class="soft-card term-week-admin-card">
+        <view class="card-top">
+          <view>
+            <view class="item-title">{{item.term || item.semesterId}}</view>
+            <view class="item-subtitle">{{item.schoolName}} · {{item.semesterId}}</view>
+          </view>
+          <view class="status-pill">{{item.config ? item.config.sourceText : '待聚合'}}</view>
+        </view>
+        <view class="detail-row">
+          <text>起始周</text>
+          <text>{{item.config ? item.config.termStartDate : '未配置'}}</text>
+        </view>
+        <view class="detail-row">
+          <text>样本进度</text>
+          <text>{{item.progress.reportCount}}/{{item.progress.targetCount}}</text>
+        </view>
+        <view class="detail-row">
+          <text>最高票</text>
+          <text>{{item.progress.winner ? item.progress.winner.termStartDate : '暂无'}}</text>
+        </view>
+      </view>
+    </view>
   </view>
 </view>

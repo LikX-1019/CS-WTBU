@@ -3,7 +3,8 @@ const { getCustomNavStyle } = require('../../utils/system');
 
 const TABS = [
   { key: 'users', label: '用户' },
-  { key: 'feedback', label: '反馈' }
+  { key: 'feedback', label: '反馈' },
+  { key: 'campus', label: '校园' }
 ];
 
 const STATUS_OPTIONS = [
@@ -12,6 +13,7 @@ const STATUS_OPTIONS = [
   { status: 'resolved', label: '已解决' },
   { status: 'closed', label: '已关闭' }
 ];
+const WEEK_OPTIONS = Array.from({ length: 20 }, (_, index) => `第${index + 1}周`);
 
 function getStatusLabel(status) {
   const option = STATUS_OPTIONS.find((item) => item.status === status);
@@ -25,6 +27,20 @@ function getStatusIndex(status) {
   return index >= 0 ? index : 0;
 }
 
+function formatDateInput(date = new Date()) {
+  const value = new Date(date);
+  const day = value.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+
+  value.setDate(value.getDate() + offset);
+
+  return [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, '0'),
+    String(value.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
 Page({
   data: Object.assign({}, getCustomNavStyle(), {
     tabs: TABS,
@@ -36,11 +52,25 @@ Page({
     ],
     users: [],
     feedback: [],
+    schools: [],
+    termWeekItems: [],
+    termWeekSummary: null,
+    campusLoading: false,
+    savingTermWeek: false,
+    configSchoolId: '',
+    configSchoolIndex: 0,
+    configSchoolName: '',
+    configSemesterId: '',
+    configTerm: '',
+    configWeekNumber: 1,
+    configWeekIndex: 0,
+    configWeekMondayDate: formatDateInput(),
     loading: false,
     errorText: '',
     adminText: '',
     updatingId: '',
-    statusOptions: STATUS_OPTIONS.map((item) => item.label)
+    statusOptions: STATUS_OPTIONS.map((item) => item.label),
+    weekOptions: WEEK_OPTIONS
   }),
 
   onLoad() {
@@ -99,6 +129,7 @@ Page({
         adminText: data.admin && data.admin.openidText ? `管理员 ${data.admin.openidText}` : '',
         errorText: ''
       });
+      await this.loadTermWeekItems();
     } catch (error) {
       this.setData({
         errorText: error.code === 'FORBIDDEN'
@@ -112,6 +143,130 @@ Page({
 
   refreshDashboard() {
     this.loadDashboard({ silent: true });
+  },
+
+  async loadTermWeekItems() {
+    if (this.termWeekLoadingPromise) {
+      return this.termWeekLoadingPromise;
+    }
+
+    this.setData({ campusLoading: true });
+
+    this.termWeekLoadingPromise = callGetSchedule({
+      action: 'adminListTermWeekConfigs'
+    }, '学期周配置加载失败')
+      .then((data) => {
+        const schools = Array.isArray(data.schools) ? data.schools : [];
+        const items = Array.isArray(data.items) ? data.items : [];
+        const selectedSchool = schools.find((school) => school.id === this.data.configSchoolId) || schools[0] || null;
+        const selectedSchoolIndex = selectedSchool ? schools.findIndex((school) => school.id === selectedSchool.id) : 0;
+
+        this.setData({
+          schools,
+          termWeekItems: items,
+          termWeekSummary: data.summary || null,
+          configSchoolId: selectedSchool ? selectedSchool.id : '',
+          configSchoolIndex: selectedSchoolIndex >= 0 ? selectedSchoolIndex : 0,
+          configSchoolName: selectedSchool ? selectedSchool.name : '',
+          errorText: ''
+        });
+        return data;
+      })
+      .catch((error) => {
+        wx.showToast({
+          title: error.messageText || error.message || '学期周配置加载失败',
+          icon: 'none'
+        });
+        return null;
+      })
+      .finally(() => {
+        this.termWeekLoadingPromise = null;
+        this.setData({ campusLoading: false });
+      });
+
+    return this.termWeekLoadingPromise;
+  },
+
+  onConfigSchoolChange(event) {
+    const index = Number(event.detail.value) || 0;
+    const school = this.data.schools[index];
+
+    if (!school) {
+      return;
+    }
+
+    this.setData({
+      configSchoolId: school.id,
+      configSchoolIndex: index,
+      configSchoolName: school.name
+    });
+  },
+
+  onConfigSemesterInput(event) {
+    this.setData({
+      configSemesterId: event.detail.value.trim()
+    });
+  },
+
+  onConfigTermInput(event) {
+    this.setData({
+      configTerm: event.detail.value.trim()
+    });
+  },
+
+  onConfigWeekChange(event) {
+    const configWeekNumber = Number(event.detail.value) + 1;
+
+    this.setData({
+      configWeekNumber,
+      configWeekIndex: configWeekNumber - 1
+    });
+  },
+
+  onConfigDateChange(event) {
+    this.setData({
+      configWeekMondayDate: event.detail.value
+    });
+  },
+
+  async saveTermWeekConfig() {
+    if (this.data.savingTermWeek) {
+      return;
+    }
+
+    if (!this.data.configSchoolId || !this.data.configSemesterId) {
+      wx.showToast({
+        title: '请先选择学校和学期',
+        icon: 'none'
+      });
+      return;
+    }
+
+    this.setData({ savingTermWeek: true });
+
+    try {
+      const data = await callGetSchedule({
+        action: 'adminSaveTermWeekConfig',
+        schoolId: this.data.configSchoolId,
+        semesterId: this.data.configSemesterId,
+        term: this.data.configTerm,
+        weekNumber: this.data.configWeekNumber,
+        weekMondayDate: this.data.configWeekMondayDate
+      }, '保存学期周配置失败');
+
+      await this.loadTermWeekItems();
+      wx.showToast({
+        title: data.config ? '已保存' : '保存成功',
+        icon: 'success'
+      });
+    } catch (error) {
+      wx.showToast({
+        title: error.messageText || error.message || '保存失败',
+        icon: 'none'
+      });
+    } finally {
+      this.setData({ savingTermWeek: false });
+    }
   },
 
   onStatusChange(event) {

@@ -968,6 +968,47 @@ function extractGradeRecords(gradesHtml, defaultTerm = '') {
   return records;
 }
 
+function parseSemesterTitle(title) {
+  const text = cleanText(title);
+  const rangeMatch = text.match(/(20\d{2})\s*[-/]\s*(20\d{2})/);
+  const singleYearMatch = rangeMatch ? null : text.match(/(20\d{2})/);
+  const startYear = rangeMatch ? Number(rangeMatch[1]) : (singleYearMatch ? Number(singleYearMatch[1]) : -1);
+  const endYear = rangeMatch ? Number(rangeMatch[2]) : startYear;
+  let termIndex = 0;
+
+  if (/(?:\u7b2c?\s*2\s*\u5b66\u671f|\u5b66\u671f\s*2|\u7b2c?\s*\u4e8c\s*\u5b66\u671f|\u4e0b\u5b66\u671f|\u6625\u5b66\u671f)/.test(text)) {
+    termIndex = 2;
+  } else if (/(?:\u7b2c?\s*1\s*\u5b66\u671f|\u5b66\u671f\s*1|\u7b2c?\s*\u4e00\s*\u5b66\u671f|\u4e0a\u5b66\u671f|\u79cb\u5b66\u671f)/.test(text)) {
+    termIndex = 1;
+  }
+
+  return {
+    startYear,
+    endYear,
+    termIndex,
+    text
+  };
+}
+
+function compareSemesterTitle(left, right) {
+  const leftMeta = parseSemesterTitle(left);
+  const rightMeta = parseSemesterTitle(right);
+
+  if (leftMeta.startYear !== rightMeta.startYear) {
+    return leftMeta.startYear - rightMeta.startYear;
+  }
+
+  if (leftMeta.endYear !== rightMeta.endYear) {
+    return leftMeta.endYear - rightMeta.endYear;
+  }
+
+  if (leftMeta.termIndex !== rightMeta.termIndex) {
+    return leftMeta.termIndex - rightMeta.termIndex;
+  }
+
+  return leftMeta.text.localeCompare(rightMeta.text);
+}
+
 function buildGradesResult(records) {
   const semesters = new Map();
   const seen = new Set();
@@ -1056,15 +1097,17 @@ function buildGradesResult(records) {
     }
   }
 
-  const semesterList = [...semesters.values()].map((semester, index) => ({
-    id: semester.id,
-    title: semester.title,
-    credit: formatNumber(semester.creditValue, 1),
-    average: formatNumber(semester.scoreValue / semester.scoreCredit, 2),
-    gpa: formatNumber(semester.gpaValue / semester.gpaCredit, 2),
-    expanded: index === 0,
-    grades: semester.grades
-  }));
+  const semesterList = [...semesters.values()]
+    .sort((left, right) => compareSemesterTitle(right.title, left.title))
+    .map((semester, index) => ({
+      id: semester.id,
+      title: semester.title,
+      credit: formatNumber(semester.creditValue, 1),
+      average: formatNumber(semester.scoreValue / semester.scoreCredit, 2),
+      gpa: formatNumber(semester.gpaValue / semester.gpaCredit, 2),
+      expanded: index === 0,
+      grades: semester.grades
+    }));
 
   return {
     summary: [
@@ -1167,6 +1210,51 @@ async function fetchEduPath(client, path) {
   return html;
 }
 
+const examFetchConfig = {
+  examBatchFetchDelayMs: 1600
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableExamHtml(html) {
+  const text = String(html || '');
+
+  return !text ||
+    text.includes('\u8bf7\u4e0d\u8981\u8fc7\u5feb\u70b9\u51fb') ||
+    text.includes('\u7487\u8702\u7b09\u7470\u4f5e\u8e43\u8e47\u7089\u9366\ue102\u507c\u9351\ufffd') ||
+    text.includes('loginForm') ||
+    text.includes('\u8bf7\u8f93\u5165\u7528\u6237\u540d') ||
+    text.includes('\u7487\u75af\u7df6\u8f93\u934f\u30e7\u657e\u93b4\u5cf0\u6080');
+}
+
+async function fetchExamBatchHtml(client, path) {
+  const normalizedPath = normalizeEduHref(path);
+
+  if (!normalizedPath) {
+    return '';
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(examFetchConfig.examBatchFetchDelayMs);
+    }
+
+    try {
+      const html = await fetchEduPath(client, normalizedPath);
+
+      if (!isRetryableExamHtml(html)) {
+        return html;
+      }
+    } catch (error) {
+      console.warn(`fetch exam page failed: ${normalizedPath}`, getErrorMessage(error, ''));
+    }
+  }
+
+  return '';
+}
+
 function extractDateText(value) {
   const text = String(value || '');
   const match = text.match(/20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?/) ||
@@ -1231,7 +1319,7 @@ function parseExams(examHtml, batch = {}) {
   return exams;
 }
 
-function getExamKey(exam) {
+function getExamContentKey(exam) {
   return [
     exam.name,
     exam.date,
@@ -1241,17 +1329,30 @@ function getExamKey(exam) {
   ].join('|');
 }
 
+function getExamBatchKey(exam) {
+  return exam.batchId || exam.batchName || '';
+}
+
+function getExamKey(exam) {
+  return [
+    getExamBatchKey(exam),
+    getExamContentKey(exam)
+  ].join('|');
+}
+
 function mergeExams(examGroups) {
-  const seen = new Set();
   const exams = [];
-  const byKey = new Map();
+  const indexByKey = new Map();
+  const unbatchedKeyByContent = new Map();
 
   for (const group of examGroups) {
     for (const exam of group) {
       const key = getExamKey(exam);
+      const contentKey = getExamContentKey(exam);
+      const batchKey = getExamBatchKey(exam);
 
-      if (seen.has(key)) {
-        const existing = byKey.get(key);
+      if (indexByKey.has(key)) {
+        const existing = exams[indexByKey.get(key)];
 
         if (existing && !existing.batchId && exam.batchId) {
           Object.assign(existing, exam, { id: existing.id });
@@ -1260,17 +1361,51 @@ function mergeExams(examGroups) {
         continue;
       }
 
-      seen.add(key);
+      if (batchKey && unbatchedKeyByContent.has(contentKey)) {
+        const unbatchedKey = unbatchedKeyByContent.get(contentKey);
+        const index = indexByKey.get(unbatchedKey);
+
+        if (index !== undefined) {
+          exams[index] = {
+            ...exam,
+            id: exams[index].id
+          };
+          indexByKey.delete(unbatchedKey);
+          indexByKey.set(key, index);
+          unbatchedKeyByContent.delete(contentKey);
+          continue;
+        }
+      }
+
       const item = {
         ...exam,
         id: `exam-${exams.length + 1}`
       };
       exams.push(item);
-      byKey.set(key, item);
+      indexByKey.set(key, exams.length - 1);
+
+      if (!batchKey) {
+        unbatchedKeyByContent.set(contentKey, key);
+      }
     }
   }
 
   return exams;
+}
+
+function getExamBatchPaths(batch) {
+  const id = String(batch && batch.id || '').trim();
+  const paths = [batch && batch.path];
+
+  if (id) {
+    paths.push(
+      `/eams/stdExamTable!examTable.action?examBatch.id=${encodeURIComponent(id)}`,
+      `/eams/stdExamTable.action?examBatch.id=${encodeURIComponent(id)}`,
+      `/eams/examTableForStd.action?examBatch.id=${encodeURIComponent(id)}`
+    );
+  }
+
+  return [...new Set(paths.map(normalizeEduHref).filter(Boolean))];
 }
 
 function findExamBatches(examHtml) {
@@ -1311,7 +1446,7 @@ function findExamBatches(examHtml) {
       const $option = $(option);
       const label = cleanText($option.text());
 
-      if (/examBatch|考试/.test(`${hint} ${label}`)) {
+      if (/examBatch|考试|批次/.test(`${hint} ${label}`)) {
         addBatch($option.attr('value'), label, '', $option.attr('selected'));
       }
     });
@@ -1462,18 +1597,32 @@ async function fetchExams(client, homeHtml) {
   }
 
   const batches = findExamBatches(examHtml);
-  const selectedBatch = batches.find((batch) => batch.selected) || {};
-  const examGroups = [parseExams(examHtml, selectedBatch)];
+  const selectedBatch = batches.find((batch) => batch.selected) || batches[0] || {};
+  const selectedBatchKey = getExamBatchKey(selectedBatch) || normalizeEduHref(selectedBatch.path);
+  const selectedExams = parseExams(examHtml, selectedBatch);
+  const parsedBatchKeys = new Set();
 
-  for (const batch of batches) {
-    try {
-      const html = await fetchEduPath(client, batch.path);
+  if (selectedExams.length > 0 && selectedBatchKey) {
+    parsedBatchKeys.add(selectedBatchKey);
+  }
+
+  const batchesToFetch = batches.filter((batch) => {
+    const batchKey = getExamBatchKey(batch) || normalizeEduHref(batch.path);
+
+    return Boolean(batchKey) && !parsedBatchKeys.has(batchKey);
+  });
+  const examGroups = [selectedExams];
+
+  for (const batch of batchesToFetch) {
+    await sleep(examFetchConfig.examBatchFetchDelayMs);
+
+    for (const path of getExamBatchPaths(batch)) {
+      const html = await fetchExamBatchHtml(client, path);
 
       if (html) {
         examGroups.push(parseExams(html, batch));
+        break;
       }
-    } catch (error) {
-      console.warn(`fetch exam page failed: ${batch.path}`, getErrorMessage(error, ''));
     }
   }
 
@@ -1558,11 +1707,16 @@ module.exports = {
   __test__: {
     buildGradesResult,
     extractGradeRecords,
+    fetchExams,
     findExamBatches,
+    getExamBatchPaths,
     mergeGradePages,
     mergeExams,
     parseGrades,
     parseExams,
-    parseSchedule
+    parseSchedule,
+    setExamBatchFetchDelayMs(ms) {
+      examFetchConfig.examBatchFetchDelayMs = Math.max(0, Number(ms) || 0);
+    }
   }
 };

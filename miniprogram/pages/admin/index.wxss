@@ -262,3 +262,70 @@
   color: #98a2b3;
   font-size: 26rpx;
 }
+
+.campus-form {
+  padding: 26rpx 28rpx;
+  margin-bottom: 16rpx;
+}
+
+.campus-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.campus-input,
+.campus-save {
+  height: 68rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.campus-input {
+  display: flex;
+  align-items: center;
+  padding: 0 18rpx;
+  border: 1rpx solid #d8dee8;
+  color: #101828;
+  background: #ffffff;
+}
+
+.campus-input-wide {
+  grid-column: span 2;
+}
+
+.campus-save {
+  grid-column: span 2;
+  color: #ffffff;
+  background: #2563eb;
+  line-height: 68rpx;
+}
+
+.campus-save[disabled] {
+  color: rgba(255, 255, 255, 0.76);
+  background: #93c5fd;
+}
+
+.campus-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.campus-summary-card {
+  min-height: 112rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18rpx 12rpx;
+  text-align: center;
+}
+
+.term-week-admin-card {
+  padding: 26rpx 28rpx;
+  margin-bottom: 16rpx;
+}

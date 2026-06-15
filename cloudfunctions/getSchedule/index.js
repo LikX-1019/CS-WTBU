@@ -14,9 +14,14 @@ cloud.init({
 
 const BINDING_COLLECTION = 'eduAccountBindings';
 const FEEDBACK_COLLECTION = 'feedbackItems';
+const TERM_WEEK_CONFIG_COLLECTION = 'termWeekConfigs';
+const TERM_WEEK_REPORT_COLLECTION = 'termWeekReports';
 const PASSWORD_SECRET_ENV = 'EDU_PASSWORD_SECRET';
 const ADMIN_OPENIDS_ENV = 'ADMIN_OPENIDS';
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const CACHE_SCHEMA_VERSION = 2;
+const TERM_WEEK_REPORT_TARGET = 10;
+const TERM_WEEK_MAX_WEEK = 20;
 function getOpenId() {
   const wxContext = cloud.getWXContext();
   const openid = wxContext.OPENID;
@@ -87,10 +92,592 @@ function formatDateTimeText(value) {
   return `${date.getMonth() + 1}-${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function formatDateText(value) {
+  const date = toDate(value);
+
+  if (!date) {
+    return '';
+  }
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function parseDateText(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function addDays(date, days) {
+  const value = new Date(date);
+  value.setDate(value.getDate() + days);
+
+  return value;
+}
+
 function isCollectionMissingError(error) {
   const message = String(error && (error.message || error.errMsg) || '');
 
   return /collection|集合/i.test(message) && /not exist|不存在|not found/i.test(message);
+}
+
+function getTermWeekConfigId(schoolId, semesterId) {
+  return `${String(schoolId || '').trim()}_${String(semesterId || '').trim()}`;
+}
+
+function getTermWeekReportId(schoolId, semesterId, openid) {
+  return `${getTermWeekConfigId(schoolId, semesterId)}_${String(openid || '').trim()}`;
+}
+
+function normalizeTermWeekInput(event = {}) {
+  const school = getSchoolOrThrow(event.schoolId || DEFAULT_SCHOOL_ID);
+  const semesterId = sanitizeText(event.semesterId, 80);
+  const term = sanitizeText(event.term, 80);
+  const weekNumber = Number(event.weekNumber);
+  const rawWeekMondayDate = sanitizeText(event.weekMondayDate, 20);
+  const date = parseDateText(rawWeekMondayDate);
+  const weekMondayDate = date ? formatDateText(date) : rawWeekMondayDate;
+
+  if (!semesterId) {
+    throw new PublicError('缺少学期信息', 'INVALID_INPUT');
+  }
+
+  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > TERM_WEEK_MAX_WEEK) {
+    throw new PublicError(`周次需为 1-${TERM_WEEK_MAX_WEEK} 周`, 'INVALID_INPUT');
+  }
+
+  if (!date) {
+    throw new PublicError('请选择有效日期', 'INVALID_INPUT');
+  }
+
+  if (date.getDay() !== 1) {
+    throw new PublicError('起始周日期必须是周一', 'INVALID_INPUT');
+  }
+
+  const termStartDate = formatDateText(addDays(date, (1 - weekNumber) * 7));
+
+  return {
+    schoolId: school.id,
+    schoolName: school.name,
+    semesterId,
+    term,
+    weekNumber,
+    weekMondayDate,
+    termStartDate
+  };
+}
+
+function normalizeTermWeekLookup(event = {}, binding = null) {
+  const schoolId = sanitizeText(event.schoolId, 80) || getSchoolIdFromBinding(binding);
+  const school = getSchoolOrThrow(schoolId);
+  const semesterId = sanitizeText(event.semesterId, 80);
+
+  if (!semesterId) {
+    throw new PublicError('缺少学期信息', 'INVALID_INPUT');
+  }
+
+  return {
+    schoolId: school.id,
+    schoolName: school.name,
+    semesterId,
+    term: sanitizeText(event.term, 80)
+  };
+}
+
+async function readTermWeekConfig(schoolId, semesterId) {
+  try {
+    const result = await getDatabase()
+      .collection(TERM_WEEK_CONFIG_COLLECTION)
+      .doc(getTermWeekConfigId(schoolId, semesterId))
+      .get();
+
+    return result.data || null;
+  } catch (error) {
+    if (isNotFoundError(error) || isCollectionMissingError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function readTermWeekReport(schoolId, semesterId, openid) {
+  try {
+    const result = await getDatabase()
+      .collection(TERM_WEEK_REPORT_COLLECTION)
+      .doc(getTermWeekReportId(schoolId, semesterId, openid))
+      .get();
+
+    return result.data || null;
+  } catch (error) {
+    if (isNotFoundError(error) || isCollectionMissingError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function getTermWeekReports(schoolId, semesterId, limit = 100) {
+  try {
+    const result = await getDatabase()
+      .collection(TERM_WEEK_REPORT_COLLECTION)
+      .where({ schoolId, semesterId })
+      .orderBy('firstReportedAt', 'asc')
+      .limit(limit)
+      .get();
+
+    return Array.isArray(result.data) ? result.data : [];
+  } catch (error) {
+    if (isCollectionMissingError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+function buildTermWeekProgress(reports) {
+  const latestByOpenid = new Map();
+
+  (Array.isArray(reports) ? reports : [])
+    .filter((report) => report && (report.openid || report._openid) && report.termStartDate)
+    .forEach((report) => {
+      const openid = report.openid || report._openid;
+      const existing = latestByOpenid.get(openid);
+      const firstReportedAt = existing && existing.firstReportedAt ?
+        existing.firstReportedAt :
+        report.firstReportedAt;
+      const existingUpdatedAt = String(existing && existing.updatedAt || existing && existing.firstReportedAt || '');
+      const reportUpdatedAt = String(report.updatedAt || report.firstReportedAt || '');
+
+      if (!existing || reportUpdatedAt >= existingUpdatedAt) {
+        latestByOpenid.set(openid, {
+          ...report,
+          openid,
+          firstReportedAt
+        });
+      }
+    });
+
+  const votes = [...latestByOpenid.values()]
+    .sort((left, right) => String(left.firstReportedAt || '').localeCompare(String(right.firstReportedAt || '')))
+    .slice(0, TERM_WEEK_REPORT_TARGET);
+  const countByStartDate = {};
+  const voteOptions = [];
+  let best = null;
+  let bestCount = 0;
+
+  votes.forEach((report, index) => {
+    const key = report.termStartDate;
+    const count = (countByStartDate[key] || 0) + 1;
+    countByStartDate[key] = count;
+
+    if (!best || count > bestCount) {
+      best = report;
+      bestCount = count;
+    }
+  });
+
+  Object.keys(countByStartDate).forEach((termStartDate) => {
+    const sample = votes.find((report) => report.termStartDate === termStartDate) || {};
+
+    voteOptions.push({
+      termStartDate,
+      weekNumber: sample.weekNumber || 1,
+      weekMondayDate: sample.weekMondayDate || termStartDate,
+      count: countByStartDate[termStartDate]
+    });
+  });
+
+  voteOptions.sort((left, right) => {
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+
+    return String(left.termStartDate).localeCompare(String(right.termStartDate));
+  });
+
+  return {
+    reportCount: votes.length,
+    targetCount: TERM_WEEK_REPORT_TARGET,
+    remainingCount: Math.max(TERM_WEEK_REPORT_TARGET - votes.length, 0),
+    ready: votes.length >= TERM_WEEK_REPORT_TARGET,
+    winner: best ? {
+      termStartDate: best.termStartDate,
+      weekNumber: best.weekNumber,
+      weekMondayDate: best.weekMondayDate,
+      count: bestCount
+    } : null,
+    voteOptions
+  };
+}
+
+function formatTermWeekConfig(config) {
+  if (!config) {
+    return null;
+  }
+
+  return {
+    id: config._id || getTermWeekConfigId(config.schoolId, config.semesterId),
+    schoolId: config.schoolId || '',
+    schoolName: config.schoolName || '',
+    semesterId: config.semesterId || '',
+    term: config.term || '',
+    weekNumber: Number(config.weekNumber) || 1,
+    weekMondayDate: config.weekMondayDate || '',
+    termStartDate: config.termStartDate || '',
+    source: config.source || '',
+    sourceText: config.source === 'admin' ? '管理员配置' : '用户聚合',
+    lockedAt: config.lockedAt || '',
+    lockedText: formatDateTimeText(config.lockedAt),
+    updatedBy: maskOpenId(config.updatedBy || '')
+  };
+}
+
+function formatTermWeekReport(report) {
+  if (!report) {
+    return null;
+  }
+
+  return {
+    weekNumber: Number(report.weekNumber) || 1,
+    weekMondayDate: report.weekMondayDate || '',
+    termStartDate: report.termStartDate || '',
+    firstReportedAt: report.firstReportedAt || '',
+    firstReportedText: formatDateTimeText(report.firstReportedAt),
+    updatedText: formatDateTimeText(report.updatedAt)
+  };
+}
+
+async function saveTermWeekConfig(input, source, updatedBy) {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const id = getTermWeekConfigId(input.schoolId, input.semesterId);
+  const data = {
+    schoolId: input.schoolId,
+    schoolName: input.schoolName,
+    semesterId: input.semesterId,
+    term: input.term || '',
+    weekNumber: input.weekNumber,
+    weekMondayDate: input.weekMondayDate,
+    termStartDate: input.termStartDate,
+    source,
+    lockedAt: now,
+    updatedBy: updatedBy || '',
+    updatedAt: db.serverDate()
+  };
+
+  await db.collection(TERM_WEEK_CONFIG_COLLECTION).doc(id).set({ data });
+
+  return data;
+}
+
+function getPreferredTermLabel(reports, fallback = '') {
+  const fromReports = (Array.isArray(reports) ? reports : [])
+    .map((report) => sanitizeText(report && report.term, 80))
+    .find(Boolean);
+
+  return sanitizeText(fallback, 80) || fromReports || '';
+}
+
+function groupTermWeekReports(reports) {
+  const groups = new Map();
+
+  (Array.isArray(reports) ? reports : []).forEach((report) => {
+    if (!report || !report.schoolId || !report.semesterId) {
+      return;
+    }
+
+    const key = getTermWeekConfigId(report.schoolId, report.semesterId);
+    const list = groups.get(key) || [];
+    list.push(report);
+    groups.set(key, list);
+  });
+
+  for (const [key, list] of groups.entries()) {
+    list.sort((left, right) => String(left.firstReportedAt || '').localeCompare(String(right.firstReportedAt || '')));
+    groups.set(key, list);
+  }
+
+  return groups;
+}
+
+function formatTermWeekAdminItem(config, reports, sourceConfig, schoolName = '') {
+  const progress = buildTermWeekProgress(reports);
+  const effectiveConfig = config || sourceConfig || null;
+  const formattedConfig = formatTermWeekConfig(effectiveConfig);
+
+  return {
+    id: getTermWeekConfigId(
+      effectiveConfig && effectiveConfig.schoolId || (reports[0] && reports[0].schoolId) || '',
+      effectiveConfig && effectiveConfig.semesterId || (reports[0] && reports[0].semesterId) || ''
+    ),
+    schoolId: effectiveConfig && effectiveConfig.schoolId || (reports[0] && reports[0].schoolId) || '',
+    schoolName: effectiveConfig && effectiveConfig.schoolName || schoolName || '',
+    semesterId: effectiveConfig && effectiveConfig.semesterId || (reports[0] && reports[0].semesterId) || '',
+    term: effectiveConfig && effectiveConfig.term || getPreferredTermLabel(reports, ''),
+    config: formattedConfig,
+    progress,
+    report: reports.length > 0 ? formatTermWeekReport(reports[0]) : null,
+    canSubmitReport: !effectiveConfig,
+    updatedText: formatDateTimeText(effectiveConfig && effectiveConfig.lockedAt || (reports[0] && reports[0].updatedAt))
+  };
+}
+
+async function ensureTermWeekConfigFromReports(input, reports, source = 'user_aggregate', updatedBy = '') {
+  const existing = await readTermWeekConfig(input.schoolId, input.semesterId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const progress = buildTermWeekProgress(reports);
+
+  if (!progress.ready || !progress.winner) {
+    return null;
+  }
+
+  const term = getPreferredTermLabel(reports, input.term);
+
+  return saveTermWeekConfig({
+    ...input,
+    term,
+    weekNumber: Number(progress.winner.weekNumber) || 1,
+    weekMondayDate: progress.winner.weekMondayDate,
+    termStartDate: progress.winner.termStartDate
+  }, source, updatedBy);
+}
+
+async function getTermWeekConfig(event = {}) {
+  const openid = getOpenId();
+  const binding = await readBinding(openid);
+
+  if (!isBoundBinding(binding)) {
+    throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
+  }
+
+  const lookup = normalizeTermWeekLookup(event, binding);
+  let config = await readTermWeekConfig(lookup.schoolId, lookup.semesterId);
+  const report = await readTermWeekReport(lookup.schoolId, lookup.semesterId, openid);
+  const reports = await getTermWeekReports(lookup.schoolId, lookup.semesterId);
+  const progress = buildTermWeekProgress(reports);
+
+  if (!config) {
+    config = await ensureTermWeekConfigFromReports(lookup, reports);
+  }
+
+  return {
+    success: true,
+    data: {
+      school: {
+        id: lookup.schoolId,
+        name: lookup.schoolName
+      },
+      semesterId: lookup.semesterId,
+      term: lookup.term || getPreferredTermLabel(reports, ''),
+      config: formatTermWeekConfig(config),
+      report: formatTermWeekReport(report),
+      progress,
+      canSubmitReport: !config,
+      loadedAt: new Date().toISOString()
+    }
+  };
+}
+
+async function submitTermWeekReport(event = {}) {
+  const openid = getOpenId();
+  const binding = await readBinding(openid);
+
+  if (!isBoundBinding(binding)) {
+    throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
+  }
+
+  const lookup = normalizeTermWeekLookup(event, binding);
+  const existingConfig = await readTermWeekConfig(lookup.schoolId, lookup.semesterId);
+
+  if (existingConfig) {
+    throw new PublicError('当前学期已配置起始周，无需再次上报', 'TERM_WEEK_LOCKED');
+  }
+
+  const input = normalizeTermWeekInput({
+    ...lookup,
+    weekNumber: event.weekNumber,
+    weekMondayDate: event.weekMondayDate
+  });
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const existingReport = await readTermWeekReport(input.schoolId, input.semesterId, openid);
+  const firstReportedAt = existingReport && existingReport.firstReportedAt || now;
+
+  await db.collection(TERM_WEEK_REPORT_COLLECTION).doc(getTermWeekReportId(input.schoolId, input.semesterId, openid)).set({
+    data: {
+      _openid: openid,
+      openid,
+      schoolId: input.schoolId,
+      schoolName: input.schoolName,
+      semesterId: input.semesterId,
+      term: input.term || lookup.term || '',
+      weekNumber: input.weekNumber,
+      weekMondayDate: input.weekMondayDate,
+      termStartDate: input.termStartDate,
+      firstReportedAt,
+      updatedAt: db.serverDate()
+    }
+  });
+
+  const reports = await getTermWeekReports(input.schoolId, input.semesterId);
+  const progress = buildTermWeekProgress(reports);
+  const config = await ensureTermWeekConfigFromReports(input, reports);
+
+  return {
+    success: true,
+    data: {
+      school: {
+        id: input.schoolId,
+        name: input.schoolName
+      },
+      semesterId: input.semesterId,
+      term: input.term || lookup.term || '',
+      report: formatTermWeekReport({
+        schoolId: input.schoolId,
+        semesterId: input.semesterId,
+        term: input.term || lookup.term || '',
+        weekNumber: input.weekNumber,
+        weekMondayDate: input.weekMondayDate,
+        termStartDate: input.termStartDate,
+        firstReportedAt,
+        updatedAt: now
+      }),
+      config: formatTermWeekConfig(config),
+      progress,
+      canSubmitReport: !config,
+      loadedAt: now
+    }
+  };
+}
+
+async function adminSaveTermWeekConfig(event = {}) {
+  const updatedBy = assertAdmin();
+  const input = normalizeTermWeekInput(event);
+  const config = await saveTermWeekConfig(input, 'admin', updatedBy);
+
+  return {
+    success: true,
+    data: {
+      config: formatTermWeekConfig(config),
+      progress: buildTermWeekProgress(await getTermWeekReports(input.schoolId, input.semesterId)),
+      loadedAt: new Date().toISOString()
+    }
+  };
+}
+
+async function adminListTermWeekConfigs(event = {}) {
+  assertAdmin();
+
+  const schoolId = sanitizeText(event.schoolId, 80);
+  const semesterId = sanitizeText(event.semesterId, 80);
+  const configs = await getLatestDocuments(TERM_WEEK_CONFIG_COLLECTION, {
+    _id: true,
+    schoolId: true,
+    schoolName: true,
+    semesterId: true,
+    term: true,
+    weekNumber: true,
+    weekMondayDate: true,
+    termStartDate: true,
+    source: true,
+    lockedAt: true,
+    updatedBy: true,
+    updatedAt: true
+  }, 'lockedAt', 100);
+  const reports = await getLatestDocuments(TERM_WEEK_REPORT_COLLECTION, {
+    _id: true,
+    _openid: true,
+    schoolId: true,
+    schoolName: true,
+    semesterId: true,
+    term: true,
+    weekNumber: true,
+    weekMondayDate: true,
+    termStartDate: true,
+    firstReportedAt: true,
+    updatedAt: true
+  }, 'firstReportedAt', 500);
+  const configMap = new Map();
+  const reportGroups = groupTermWeekReports(reports);
+
+  configs.forEach((config) => {
+    const key = getTermWeekConfigId(config.schoolId, config.semesterId);
+    configMap.set(key, config);
+  });
+
+  const groupedKeys = new Set([...configMap.keys(), ...reportGroups.keys()]);
+  const items = [...groupedKeys]
+    .filter((key) => {
+      const config = configMap.get(key);
+      const reportsForGroup = reportGroups.get(key) || [];
+      const firstReport = reportsForGroup[0] || null;
+      const groupSchoolId = config && config.schoolId || firstReport && firstReport.schoolId || '';
+      const groupSemesterId = config && config.semesterId || firstReport && firstReport.semesterId || '';
+
+      if (schoolId && groupSchoolId !== schoolId) {
+        return false;
+      }
+
+      if (semesterId && groupSemesterId !== semesterId) {
+        return false;
+      }
+
+      return true;
+    })
+    .map((key) => {
+      const config = configMap.get(key) || null;
+      const reportsForGroup = reportGroups.get(key) || [];
+      const fallbackSchoolName = (reportsForGroup[0] && reportsForGroup[0].schoolName) || '';
+      const item = formatTermWeekAdminItem(config, reportsForGroup, null, fallbackSchoolName);
+
+      return item;
+    })
+    .sort((left, right) => {
+      if (left.schoolName !== right.schoolName) {
+        return String(left.schoolName || '').localeCompare(String(right.schoolName || ''));
+      }
+
+      return String(left.semesterId || '').localeCompare(String(right.semesterId || ''));
+    });
+
+  return {
+    success: true,
+    data: {
+      schools: listSchools(),
+      items,
+      summary: {
+        configCount: configs.length,
+        reportCount: reports.length,
+        readyCount: items.filter((item) => item.progress && item.progress.ready).length
+      },
+      loadedAt: new Date().toISOString()
+    }
+  };
 }
 
 function getPasswordKey() {
@@ -194,10 +781,21 @@ function hasScheduleCache(schedule, exams) {
     Array.isArray(exams);
 }
 
+function hasCurrentCacheSchema(value) {
+  return value && Number(value.cacheVersion) === CACHE_SCHEMA_VERSION;
+}
+
 function hasGradesCache(grades) {
   return grades &&
     Array.isArray(grades.summary) &&
     Array.isArray(grades.semesters);
+}
+
+function withCacheVersion(data) {
+  return {
+    ...(data || {}),
+    cacheVersion: CACHE_SCHEMA_VERSION
+  };
 }
 
 function hasScheduleCaches(value) {
@@ -214,6 +812,7 @@ function isUnifiedCacheReady(binding) {
     hasScheduleCache(binding.lastSchedule, binding.lastExams) &&
     hasGradesCache(binding.lastGrades) &&
     hasScheduleCaches(binding.scheduleCaches) &&
+    hasCurrentCacheSchema(binding) &&
     isCacheFresh(binding.lastFetchedAt)
   );
 }
@@ -240,6 +839,7 @@ function createScheduleCacheEntry(schedule, exams, fetchedAt) {
   return {
     schedule,
     exams,
+    cacheVersion: CACHE_SCHEMA_VERSION,
     fetchedAt
   };
 }
@@ -262,7 +862,7 @@ function getCachedSemesterSchedule(binding, semesterId) {
   const caches = normalizeScheduleCaches(binding && binding.scheduleCaches);
   const entry = caches[getScheduleCacheKey(semesterId)];
 
-  if (!entry || !hasScheduleCache(entry.schedule, entry.exams) || !isCacheFresh(entry.fetchedAt)) {
+  if (!entry || !hasScheduleCache(entry.schedule, entry.exams) || !hasCurrentCacheSchema(entry) || !isCacheFresh(entry.fetchedAt)) {
     return null;
   }
 
@@ -353,8 +953,9 @@ async function saveBinding(openid, school, studentId, password, schedule, profil
       profile,
       lastSchedule: schedule,
       lastExams: exams,
-      lastGrades: grades || sameSchool && existing && existing.lastGrades || null,
+      lastGrades: grades ? withCacheVersion(grades) : sameSchool && existing && existing.lastGrades || null,
       lastFetchedAt: now,
+      cacheVersion: CACHE_SCHEMA_VERSION,
       scheduleCaches,
       createdAt: existing && existing.createdAt ? existing.createdAt : db.serverDate(),
       updatedAt: db.serverDate()
@@ -379,6 +980,7 @@ async function updateScheduleCache(openid, schedule, exams = [], options = {}) {
   const data = {
     schoolId: school.id,
     schoolName: school.name,
+    cacheVersion: CACHE_SCHEMA_VERSION,
     scheduleCaches: _.set(scheduleCaches),
     updatedAt: db.serverDate()
   };
@@ -398,7 +1000,8 @@ async function updateGradesCache(openid, grades) {
 
   await db.collection(BINDING_COLLECTION).doc(openid).update({
     data: {
-      lastGrades: _.set(grades),
+      lastGrades: _.set(withCacheVersion(grades)),
+      cacheVersion: CACHE_SCHEMA_VERSION,
       updatedAt: db.serverDate()
     }
   });
@@ -420,8 +1023,9 @@ async function updateUnifiedCache(openid, binding, snapshot) {
     schoolName: school.name,
     lastSchedule: _.set(snapshot.schedule),
     lastExams: _.set(snapshot.exams),
-    lastGrades: _.set(snapshot.grades),
+    lastGrades: _.set(withCacheVersion(snapshot.grades)),
     lastFetchedAt: fetchedAt,
+    cacheVersion: CACHE_SCHEMA_VERSION,
     scheduleCaches: _.set(scheduleCaches),
     updatedAt: db.serverDate()
   };
@@ -449,7 +1053,7 @@ async function refreshUnifiedCache(openid, binding, options = {}) {
   await updateUnifiedCache(openid, binding, {
     schedule: fetched.schedule,
     exams: fetched.exams,
-    grades: fetched.grades,
+    grades: withCacheVersion(fetched.grades),
     profile,
     fetchedAt
   });
@@ -548,6 +1152,7 @@ function withScheduleMeta(schedule, binding, exams = [], fetchedAt) {
   return {
     ...schedule,
     exams,
+    cacheVersion: CACHE_SCHEMA_VERSION,
     studentId: maskStudentId(binding.studentId),
     school: getSchoolMetaFromBinding(binding),
     lastFetchedAt: fetchedAt || binding.lastFetchedAt || new Date().toISOString()
@@ -575,7 +1180,7 @@ async function bindAccount(event) {
     data: {
       ...withScheduleMeta(schedule, { studentId, schoolId: school.id }, exams),
       profile,
-      grades,
+      grades: withCacheVersion(grades),
       isAdmin: isAdminOpenId(openid)
     }
   };
@@ -590,9 +1195,10 @@ async function getBoundSchedule(event = {}) {
   }
 
   const semesterId = String(event.semesterId || '').trim();
+  const forceRefresh = Boolean(event.force);
   let activeBinding = binding;
 
-  if (!isUnifiedCacheReady(binding)) {
+  if (forceRefresh || !isUnifiedCacheReady(binding)) {
     const refreshed = await refreshUnifiedCache(openid, binding);
 
     if (!semesterId) {
@@ -613,12 +1219,13 @@ async function getBoundSchedule(event = {}) {
         refreshed.schedule,
         refreshed.exams,
         refreshed.fetchedAt
-      )
+      ),
+      cacheVersion: CACHE_SCHEMA_VERSION
     };
   }
 
   if (semesterId) {
-    const cached = getCachedSemesterSchedule(activeBinding, semesterId);
+    const cached = forceRefresh ? null : getCachedSemesterSchedule(activeBinding, semesterId);
     const data = cached || await refreshSemesterScheduleCache(openid, activeBinding, semesterId);
 
     return {
@@ -669,7 +1276,7 @@ async function getBoundProfile() {
   };
 }
 
-async function getBoundGrades() {
+async function getBoundGrades(event = {}) {
   const openid = getOpenId();
   const binding = await readBinding(openid);
 
@@ -677,10 +1284,10 @@ async function getBoundGrades() {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
-  if (isUnifiedCacheReady(binding)) {
+  if (!event.force && isUnifiedCacheReady(binding)) {
     return {
       success: true,
-      data: binding.lastGrades
+      data: withCacheVersion(binding.lastGrades)
     };
   }
 
@@ -688,7 +1295,7 @@ async function getBoundGrades() {
 
   return {
     success: true,
-    data: refreshed.grades
+    data: withCacheVersion(refreshed.grades)
   };
 }
 
@@ -722,7 +1329,7 @@ async function refreshAllCaches() {
     success: true,
     data: {
       schedule,
-      grades: refreshed.grades,
+      grades: withCacheVersion(refreshed.grades),
       school: getSchoolMetaFromBinding(binding),
       refreshedAt: refreshed.fetchedAt
     }
@@ -1058,7 +1665,7 @@ exports.main = async (event) => {
     }
 
     if (action === 'grades') {
-      return await getBoundGrades();
+      return await getBoundGrades(input);
     }
 
     if (action === 'saveProfile') {
@@ -1077,12 +1684,28 @@ exports.main = async (event) => {
       return await submitFeedback(input);
     }
 
+    if (action === 'getTermWeekConfig') {
+      return await getTermWeekConfig(input);
+    }
+
+    if (action === 'submitTermWeekReport') {
+      return await submitTermWeekReport(input);
+    }
+
     if (action === 'adminDashboard') {
       return await getAdminDashboard(input);
     }
 
     if (action === 'adminUpdateFeedback') {
       return await updateFeedbackStatus(input);
+    }
+
+    if (action === 'adminSaveTermWeekConfig') {
+      return await adminSaveTermWeekConfig(input);
+    }
+
+    if (action === 'adminListTermWeekConfigs') {
+      return await adminListTermWeekConfigs(input);
     }
 
     if (action === 'direct' || input.studentId && input.password) {
