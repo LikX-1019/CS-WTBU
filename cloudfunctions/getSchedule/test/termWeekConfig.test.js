@@ -240,10 +240,10 @@ function bindUser(context, openid, schoolId = 'wtbu') {
     schoolId,
     schoolName: 'Wuhan Business University',
     lastFetchedAt: '2026-02-01T00:00:00.000Z',
-    cacheVersion: 2,
+    cacheVersion: 3,
     lastSchedule: { courses: [] },
     lastExams: [],
-    lastGrades: { summary: [], semesters: [], cacheVersion: 2 },
+    lastGrades: { summary: [], semesters: [], cacheVersion: 3 },
     scheduleCaches: {}
   });
 }

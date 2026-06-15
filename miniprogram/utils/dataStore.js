@@ -1,6 +1,6 @@
 const { callGetSchedule } = require('./api');
 
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 
 const store = {
   schedule: null,

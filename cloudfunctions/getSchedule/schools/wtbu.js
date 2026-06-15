@@ -343,11 +343,120 @@ function getCurrentSemesterId(indexHtml) {
   return selectedOption || inputValue || (inputMatch ? inputMatch[1] : '');
 }
 
+function formatSemesterLabel(label, schoolYear = '', termName = '') {
+  const cleanLabel = cleanText(label);
+  const yearText = cleanText(schoolYear).replace(/\s+/g, '');
+  const rawTerm = cleanText(termName).replace(/\s+/g, '');
+
+  if (/20\d{2}\s*[-/]\s*20\d{2}/.test(cleanLabel) && /\u5b66\u671f|[12\u4e00\u4e8c]/.test(cleanLabel)) {
+    return cleanLabel.replace(/\s+/g, '');
+  }
+
+  if (!yearText) {
+    return cleanLabel || rawTerm;
+  }
+
+  if (/^\d+$/.test(rawTerm) || /^[\u4e00\u4e8c]$/.test(rawTerm)) {
+    return `${yearText}\u5b66\u5e74\u7b2c${rawTerm}\u5b66\u671f`;
+  }
+
+  if (/^\u5b66\u671f\s*[12\u4e00\u4e8c]$/.test(rawTerm)) {
+    return `${yearText}\u5b66\u5e74\u7b2c${rawTerm.replace(/\u5b66\u671f/g, '')}\u5b66\u671f`;
+  }
+
+  if (rawTerm) {
+    return `${yearText}\u5b66\u5e74${rawTerm}`;
+  }
+
+  return cleanLabel || yearText;
+}
+
+function getCurrentSemesterLabel(indexHtml) {
+  const html = String(indexHtml || '');
+  const $ = cheerio.load(html);
+  const selectedOptionText = cleanText($('select[name="semester.id"] option[selected]').first().text());
+  const inputValue = $('input')
+    .map((index, input) => cleanText($(input).attr('value')))
+    .get()
+    .find((value) => /20\d{2}\s*[-/]\s*20\d{2}.*\u5b66\u671f/.test(value));
+  const textMatch = getTextFromHtml(html).match(/20\d{2}\s*[-/]\s*20\d{2}\s*(?:\u5b66\u5e74)?\s*(?:\u7b2c?\s*[12\u4e00\u4e8c]\s*\u5b66\u671f|\u5b66\u671f\s*[12\u4e00\u4e8c])/);
+
+  return selectedOptionText || inputValue || (textMatch ? textMatch[0] : '');
+}
+
+function addSemester(semesters, id, label, options = {}) {
+  const semesterId = String(id || '').trim();
+  const formattedLabel = formatSemesterLabel(label, options.schoolYear, options.termName);
+
+  if (!semesterId || semesters.some((semester) => semester.id === semesterId)) {
+    return;
+  }
+
+  semesters.push({
+    id: semesterId,
+    title: formattedLabel || `学期 ${semesterId}`,
+    label: formattedLabel || `学期 ${semesterId}`,
+    selected: Boolean(options.selected)
+  });
+}
+
+function mergeSemesters(...groups) {
+  const merged = [];
+
+  groups.forEach((group) => {
+    (Array.isArray(group) ? group : []).forEach((semester) => {
+      const existing = merged.find((item) => item.id === semester.id);
+
+      if (existing) {
+        existing.selected = Boolean(existing.selected || semester.selected);
+
+        if ((!existing.label || existing.label === `学期 ${existing.id}`) && semester.label) {
+          existing.label = semester.label;
+          existing.title = semester.title || semester.label;
+        }
+
+        return;
+      }
+
+      if (semester && semester.id) {
+        merged.push({ ...semester });
+      }
+    });
+  });
+
+  return merged.sort((left, right) => compareSemesterTitle(right.label, left.label));
+}
+
+function extractSemesterFromObjectLiteral(block) {
+  const text = String(block || '');
+  const keyPrefix = "['\"]?\\b";
+  const keySuffix = "\\b['\"]?\\s*[:=]\\s*";
+  const idMatch = text.match(new RegExp(`${keyPrefix}(?:semesterId|semester\\.id|id)${keySuffix}['"]?([A-Za-z0-9_.-]+)['"]?`, 'i'));
+  const labelMatch = text.match(new RegExp(`${keyPrefix}(?:label|title|text|semesterName|name)${keySuffix}['"]([^'"]{1,100})['"]`, 'i'));
+  const schoolYearMatch = text.match(new RegExp(`${keyPrefix}(?:schoolYear|schoolyear|year)${keySuffix}['"]?((?:19|20)\\d{2}\\s*[-/]\\s*(?:19|20)\\d{2})['"]?`, 'i'));
+  const termMatch = text.match(new RegExp(`${keyPrefix}(?:term|semester|semesterType|name)${keySuffix}['"]?([^,'"};]{1,40})`, 'i'));
+  const label = labelMatch ? labelMatch[1] : '';
+  const schoolYear = schoolYearMatch ? schoolYearMatch[1] : '';
+  const termName = termMatch ? termMatch[1] : '';
+
+  if (!idMatch || (!label && !schoolYear && !/\u5b66\u671f|[12\u4e00\u4e8c]/.test(termName))) {
+    return null;
+  }
+
+  return {
+    id: idMatch[1],
+    label,
+    schoolYear,
+    termName
+  };
+}
+
 function parseSemesters(indexHtml) {
-  const $ = cheerio.load(String(indexHtml || ''));
+  const html = String(indexHtml || '');
+  const $ = cheerio.load(html);
   const semesters = [];
 
-  $('select[name="semester.id"] option').each((index, option) => {
+  $('select[name="semester.id"] option, select[name="semesterId"] option').each((index, option) => {
     const $option = $(option);
     const id = String($option.attr('value') || '').trim();
     const label = cleanText($option.text());
@@ -356,15 +465,56 @@ function parseSemesters(indexHtml) {
       return;
     }
 
-    semesters.push({
-      id,
-      title: label || '未命名学期',
-      label: label || '未命名学期',
+    addSemester(semesters, id, label, {
       selected: Boolean($option.attr('selected'))
     });
   });
 
-  return semesters;
+  $('[data-semester-id], [data-semesterid], [data-id]').each((index, element) => {
+    const $element = $(element);
+    const id = $element.attr('data-semester-id') || $element.attr('data-semesterid') || $element.attr('data-id');
+    const label = $element.text() || $element.attr('title') || $element.attr('data-label') || '';
+
+    if (/20\d{2}\s*[-/]\s*20\d{2}|\u5b66\u671f/.test(label)) {
+      addSemester(semesters, id, label);
+    }
+  });
+
+  $('a[href], area[href], [onclick]').each((index, element) => {
+    const $element = $(element);
+    const text = [$element.text(), $element.attr('title')].map(cleanText).filter(Boolean).join(' ');
+    const source = [$element.attr('href'), $element.attr('onclick')].join(' ');
+    const idMatch = source.match(/[?&](?:semesterId|semester\.id)=([^&#'"\s]+)/i) ||
+      source.match(/\b(?:semesterId|semester\.id)\b\s*[=:]\s*['"]?([A-Za-z0-9_.-]+)/i);
+
+    if (idMatch) {
+      addSemester(semesters, decodeURIComponent(idMatch[1]), text);
+    }
+  });
+
+  for (const match of html.matchAll(/\{[^{}]{0,800}(?:semesterId|semester\.id|schoolYear|semesterName)[^{}]{0,800}\}/gi)) {
+    const parsed = extractSemesterFromObjectLiteral(match[0]);
+
+    if (parsed) {
+      addSemester(semesters, parsed.id, parsed.label, {
+        schoolYear: parsed.schoolYear,
+        termName: parsed.termName
+      });
+    }
+  }
+
+  const currentSemesterId = getCurrentSemesterId(html);
+
+  if (currentSemesterId && !semesters.some((semester) => semester.id === currentSemesterId)) {
+    addSemester(semesters, currentSemesterId, getCurrentSemesterLabel(html), { selected: true });
+  }
+
+  return mergeSemesters(
+    semesters.map((semester) => ({
+      ...semester,
+      selected: semester.selected || semester.id === currentSemesterId
+    }))
+  );
 }
 
 async function fetchSchedule(client, options = {}) {
@@ -381,7 +531,7 @@ async function fetchSchedule(client, options = {}) {
   }
 
   const semesterMatch = indexHtml.match(/name="semester\.id"\s+value="([^"]*)"/);
-  const semesters = parseSemesters(indexHtml);
+  const semesters = mergeSemesters(parseSemesters(indexHtml), await fetchSemesterCalendar(client));
   const currentSemesterId = getCurrentSemesterId(indexHtml) || (semesterMatch ? semesterMatch[1] : '');
   const requestedSemesterId = String(options.semesterId || '').trim();
   const semesterId = requestedSemesterId || currentSemesterId;
@@ -409,6 +559,46 @@ async function fetchSchedule(client, options = {}) {
     })),
     selectedSemesterId: semesterId
   };
+}
+
+async function fetchSemesterCalendar(client) {
+  const paths = [
+    '/eams/dataQuery.action?dataType=semesterCalendar',
+    '/eams/dataQuery.action?tagId=semesterCalendar&dataType=semesterCalendar'
+  ];
+
+  for (const path of paths) {
+    try {
+      const html = await fetchEduPath(client, path);
+      const semesters = parseSemesters(html);
+
+      if (semesters.length > 0) {
+        return semesters;
+      }
+    } catch (error) {
+      console.warn(`fetch semester calendar failed: ${path}`, getErrorMessage(error, ''));
+    }
+  }
+
+  return [];
+}
+
+async function fetchSemestersWithClient(client) {
+  const indexResponse = await client.get(EDU_CONFIG.scheduleIndexPath, {
+    validateStatus(status) {
+      return status >= 200 && status < 300;
+    }
+  });
+  const indexHtml = String(indexResponse.data || '');
+  const semesters = mergeSemesters(parseSemesters(indexHtml), await fetchSemesterCalendar(client));
+
+  return mergeSemesters(
+    semesters
+    .map((semester) => ({
+      ...semester,
+      selected: semester.selected || semester.id === getCurrentSemesterId(indexHtml)
+    }))
+  );
 }
 
 function parseJsStringLiteral(value) {
@@ -1668,6 +1858,14 @@ async function fetchScheduleByCredentials(studentId, password, options = {}) {
   return fetchScheduleWithClient(client, homeHtml, studentId, options);
 }
 
+async function fetchSemestersByCredentials(studentId, password) {
+  const client = createEduClient();
+
+  await loginToEduSystem(client, studentId, password);
+
+  return fetchSemestersWithClient(client);
+}
+
 async function fetchGradesByCredentials(studentId, password) {
   const client = createEduClient();
   const homeHtml = await loginToEduSystem(client, studentId, password);
@@ -1701,6 +1899,7 @@ module.exports = {
   aliases: ['武汉工商学院', '武工商', 'WTBU', 'wtbu'],
   eduSystemUrl: `${EDU_CONFIG.baseUrl}${EDU_CONFIG.homePath}`,
   fetchScheduleByCredentials,
+  fetchSemestersByCredentials,
   fetchGradesByCredentials,
   fetchAllByCredentials,
   createDefaultProfile,
@@ -1712,6 +1911,7 @@ module.exports = {
     getExamBatchPaths,
     mergeGradePages,
     mergeExams,
+    parseSemesters,
     parseGrades,
     parseExams,
     parseSchedule,

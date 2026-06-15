@@ -19,7 +19,7 @@ const TERM_WEEK_REPORT_COLLECTION = 'termWeekReports';
 const PASSWORD_SECRET_ENV = 'EDU_PASSWORD_SECRET';
 const ADMIN_OPENIDS_ENV = 'ADMIN_OPENIDS';
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 const TERM_WEEK_REPORT_TARGET = 10;
 const TERM_WEEK_MAX_WEEK = 20;
 function getOpenId() {
@@ -504,7 +504,7 @@ function collectScheduleSemesterOptions(optionMap, binding, schedule) {
   );
 }
 
-function buildAdminSemesterOptions(bindings, configs, reports) {
+function buildAdminSemesterOptionMap(bindings, configs, reports) {
   const optionMap = new Map();
 
   (Array.isArray(bindings) ? bindings : []).forEach((binding) => {
@@ -523,6 +523,10 @@ function buildAdminSemesterOptions(bindings, configs, reports) {
     addAdminSemesterOption(optionMap, report.schoolId, report.schoolName, report.semesterId, report.term, report.term);
   });
 
+  return optionMap;
+}
+
+function sortAdminSemesterOptions(optionMap) {
   return [...optionMap.values()].sort((left, right) => {
     if (left.schoolName !== right.schoolName) {
       return String(left.schoolName || '').localeCompare(String(right.schoolName || ''));
@@ -530,6 +534,66 @@ function buildAdminSemesterOptions(bindings, configs, reports) {
 
     return String(right.semesterId || '').localeCompare(String(left.semesterId || ''));
   });
+}
+
+async function collectRemoteSemesterOptions(optionMap, bindings) {
+  const candidates = new Map();
+
+  (Array.isArray(bindings) ? bindings : []).forEach((binding) => {
+    if (!isBoundBinding(binding)) {
+      return;
+    }
+
+    const schoolId = getSchoolIdFromBinding(binding);
+
+    if (!candidates.has(schoolId)) {
+      candidates.set(schoolId, []);
+    }
+
+    candidates.get(schoolId).push(binding);
+  });
+
+  for (const [schoolId, schoolBindings] of candidates.entries()) {
+    const adapter = getAdapterOrThrow(schoolId);
+
+    if (typeof adapter.fetchSemestersByCredentials !== 'function') {
+      continue;
+    }
+
+    for (const binding of schoolBindings.slice(0, 3)) {
+      try {
+        const semesters = await adapter.fetchSemestersByCredentials(
+          binding.studentId,
+          decryptPassword(binding.passwordCipher)
+        );
+
+        semesters.forEach((semester) => {
+          addAdminSemesterOption(
+            optionMap,
+            schoolId,
+            binding.schoolName,
+            semester && semester.id,
+            semester && (semester.label || semester.title),
+            semester && (semester.term || semester.label || semester.title)
+          );
+        });
+
+        if (semesters.length > 0) {
+          break;
+        }
+      } catch (error) {
+        console.warn(`fetch semesters failed for ${schoolId}:`, getErrorMessage(error, ''));
+      }
+    }
+  }
+}
+
+async function buildAdminSemesterOptions(bindings, configs, reports) {
+  const optionMap = buildAdminSemesterOptionMap(bindings, configs, reports);
+
+  await collectRemoteSemesterOptions(optionMap, bindings);
+
+  return sortAdminSemesterOptions(optionMap);
 }
 
 async function ensureTermWeekConfigFromReports(input, reports, source = 'user_aggregate', updatedBy = '') {
@@ -714,6 +778,8 @@ async function adminListTermWeekConfigs(event = {}) {
   const bindings = await getLatestDocuments(BINDING_COLLECTION, {
     _id: true,
     _openid: true,
+    studentId: true,
+    passwordCipher: true,
     schoolId: true,
     schoolName: true,
     lastSchedule: true,
@@ -722,7 +788,7 @@ async function adminListTermWeekConfigs(event = {}) {
   }, 'lastFetchedAt', 200);
   const configMap = new Map();
   const reportGroups = groupTermWeekReports(reports);
-  const semesterOptions = buildAdminSemesterOptions(bindings, configs, reports);
+  const semesterOptions = await buildAdminSemesterOptions(bindings, configs, reports);
 
   configs.forEach((config) => {
     const key = getTermWeekConfigId(config.schoolId, config.semesterId);

@@ -11,6 +11,7 @@ const wtbu = localRequire('./schools/wtbu');
 const { getSchool } = localRequire('./schools');
 const parseGrades = wtbu.__test__.parseGrades;
 const parseExams = wtbu.__test__.parseExams;
+const parseSemesters = wtbu.__test__.parseSemesters;
 const fetchExams = wtbu.__test__.fetchExams;
 const findExamBatches = wtbu.__test__.findExamBatches;
 const getExamBatchPaths = wtbu.__test__.getExamBatchPaths;
@@ -69,6 +70,28 @@ function getSummaryValue(result, label) {
 
   return item ? item.value : '';
 }
+
+const scheduleSemesters = parseSemesters(`
+<input name="semester.id" value="488">
+<input type="text" value="\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0032\u5b66\u671f">
+<script>
+  var semesterCalendar = [
+    { id: 487, schoolYear: '2025-2026', term: '1' },
+    { id: 488, schoolYear: '2025-2026', term: '2' },
+    { semesterId: '489', semesterName: '\u0032\u0030\u0032\u0036-\u0032\u0030\u0032\u0037\u5b66\u5e74\u7b2c\u0031\u5b66\u671f' }
+  ];
+</script>
+`);
+
+assert.deepStrictEqual(scheduleSemesters.map((semester) => ({
+  id: semester.id,
+  label: semester.label,
+  selected: semester.selected
+})), [
+  { id: '489', label: '\u0032\u0030\u0032\u0036-\u0032\u0030\u0032\u0037\u5b66\u5e74\u7b2c\u0031\u5b66\u671f', selected: false },
+  { id: '488', label: '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0032\u5b66\u671f', selected: true },
+  { id: '487', label: '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0031\u5b66\u671f', selected: false }
+]);
 
 const shiftedByEmptyCell = parse(`
 <table>
@@ -345,7 +368,7 @@ function createGrades(id) {
 
 function createCachedGrades(id) {
   return Object.assign(createGrades(id), {
-    cacheVersion: 2
+    cacheVersion: 3
   });
 }
 
@@ -357,7 +380,7 @@ function createBinding(overrides = {}) {
     lastExams: [{ id: 'exam-current' }],
     lastGrades: createCachedGrades('current'),
     lastFetchedAt: new Date().toISOString(),
-    cacheVersion: 2,
+    cacheVersion: 3,
     scheduleCaches: {}
   }, overrides);
 }
@@ -443,7 +466,7 @@ async function runCacheTests() {
   assert.strictEqual(capturedUpdate.name, 'eduAccountBindings');
   assert.strictEqual(capturedUpdate.id, 'openid-1');
   assert.deepStrictEqual(toPlain(capturedUpdate.options.data.lastGrades), {
-    __set: Object.assign({}, cachedGrades, { cacheVersion: 2 })
+    __set: Object.assign({}, cachedGrades, { cacheVersion: 3 })
   });
   assert.strictEqual(capturedUpdate.options.data.updatedAt, 'SERVER_DATE');
 
@@ -569,7 +592,7 @@ async function runCacheTests() {
       2024: {
         schedule: createSchedule('2024'),
         exams: [{ id: 'exam-2024' }],
-        cacheVersion: 2,
+        cacheVersion: 3,
         fetchedAt: new Date().toISOString()
       }
     }

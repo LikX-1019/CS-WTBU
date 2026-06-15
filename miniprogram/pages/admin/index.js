@@ -310,7 +310,7 @@ Page({
       configSemesterIndex: selectedSemester ? selectedIndex : 0,
       configSemesterId: selectedSemester ? selectedSemester.id : '',
       configSemesterName: selectedSemester ? selectedSemester.label : '',
-      configTerm: selectedSemester ? (selectedSemester.term || this.data.configTerm) : ''
+      configTerm: selectedSemester ? (selectedSemester.term || selectedSemester.label || this.data.configTerm) : ''
     };
   },
 
