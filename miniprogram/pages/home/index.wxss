@@ -332,3 +332,8 @@
   color: #e11d48;
   background: #fff1f2;
 }
+
+.state-warning {
+  color: #92400e;
+  background: #fff7ed;
+}

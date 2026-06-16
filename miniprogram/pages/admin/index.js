@@ -38,6 +38,17 @@ function formatDateInput(date = new Date()) {
   return formatDateText(value);
 }
 
+function getTermStartPreview(weekMondayDate, weekNumber) {
+  const date = parseDateText(weekMondayDate);
+  const week = Number(weekNumber);
+
+  if (!date || Number.isNaN(date.getTime()) || !Number.isInteger(week) || week < 1) {
+    return '';
+  }
+
+  return formatDateText(addDays(date, (1 - week) * 7));
+}
+
 function formatDateText(date) {
   const value = new Date(date);
 
@@ -134,10 +145,12 @@ Page({
     semesterSourceOptions: [],
     semesterOptions: [],
     semesterPickerOptions: ['暂无可选学期'],
+    termWeekSchoolGroups: [],
     termWeekItems: [],
     termWeekSummary: null,
     campusLoading: false,
     savingTermWeek: false,
+    savingTermWeekKey: '',
     configSchoolId: '',
     configSchoolIndex: 0,
     configSchoolName: '',
@@ -148,11 +161,14 @@ Page({
     configWeekNumber: 1,
     configWeekIndex: 0,
     configWeekMondayDate: formatDateInput(),
+    configTermStartDatePreview: '',
     calendarVisible: false,
     calendarWeekdays: CALENDAR_WEEKDAYS,
     calendarTitle: '',
     calendarMonthDate: '',
     calendarDays: [],
+    calendarTarget: null,
+    termWeekEditorVisible: false,
     loading: false,
     errorText: '',
     adminText: '',
@@ -246,15 +262,22 @@ Page({
       .then((data) => {
         const schools = Array.isArray(data.schools) ? data.schools : [];
         const items = Array.isArray(data.items) ? data.items : [];
+        const termWeekSchoolGroups = Array.isArray(data.schoolGroups) ? data.schoolGroups : [];
         const selectedSchool = schools.find((school) => school.id === this.data.configSchoolId) || schools[0] || null;
         const selectedSchoolIndex = selectedSchool ? schools.findIndex((school) => school.id === selectedSchool.id) : 0;
         const semesterSourceOptions = Array.isArray(data.semesterOptions) ? data.semesterOptions : [];
-        const semesterState = this.buildSemesterState(semesterSourceOptions, selectedSchool && selectedSchool.id);
+        const semesterState = this.buildSemesterState(
+          semesterSourceOptions,
+          selectedSchool && selectedSchool.id,
+          '',
+          termWeekSchoolGroups
+        );
 
         this.setData({
           schools,
           semesterSourceOptions,
           ...semesterState,
+          termWeekSchoolGroups,
           termWeekItems: items,
           termWeekSummary: data.summary || null,
           configSchoolId: selectedSchool ? selectedSchool.id : '',
@@ -291,16 +314,24 @@ Page({
       configSchoolId: school.id,
       configSchoolIndex: index,
       configSchoolName: school.name,
-      ...this.buildSemesterState(this.data.semesterSourceOptions, school.id)
+      ...this.buildSemesterState(this.data.semesterSourceOptions, school.id, '', this.data.termWeekSchoolGroups)
     });
   },
 
-  buildSemesterState(sourceOptions, schoolId, preferredSemesterId = '') {
+  buildSemesterState(sourceOptions, schoolId, preferredSemesterId = '', termWeekSchoolGroups = this.data.termWeekSchoolGroups) {
     const semesterOptions = normalizeSemesterOptions(sourceOptions, schoolId);
     const targetId = preferredSemesterId || this.data.configSemesterId;
     const matchedIndex = semesterOptions.findIndex((item) => item.id === targetId);
     const selectedIndex = matchedIndex >= 0 ? matchedIndex : 0;
     const selectedSemester = semesterOptions[selectedIndex] || null;
+    const schoolGroup = (Array.isArray(termWeekSchoolGroups) ? termWeekSchoolGroups : [])
+      .find((group) => group && group.schoolId === schoolId) || null;
+    const configuredSemester = schoolGroup && Array.isArray(schoolGroup.semesters)
+      ? schoolGroup.semesters.find((semester) => (
+        semester &&
+        semester.semesterId === (selectedSemester && selectedSemester.id)
+      )) || null
+      : null;
 
     return {
       semesterOptions,
@@ -310,7 +341,20 @@ Page({
       configSemesterIndex: selectedSemester ? selectedIndex : 0,
       configSemesterId: selectedSemester ? selectedSemester.id : '',
       configSemesterName: selectedSemester ? selectedSemester.label : '',
-      configTerm: selectedSemester ? (selectedSemester.term || selectedSemester.label || this.data.configTerm) : ''
+      configTerm: configuredSemester && configuredSemester.term
+        ? configuredSemester.term
+        : (selectedSemester ? (selectedSemester.term || selectedSemester.label || this.data.configTerm) : this.data.configTerm),
+      configWeekNumber: configuredSemester && configuredSemester.weekNumber ? configuredSemester.weekNumber : this.data.configWeekNumber,
+      configWeekIndex: configuredSemester && configuredSemester.weekNumber ? configuredSemester.weekNumber - 1 : this.data.configWeekIndex,
+      configWeekMondayDate: configuredSemester && configuredSemester.weekMondayDate
+        ? configuredSemester.weekMondayDate
+        : this.data.configWeekMondayDate,
+      configTermStartDatePreview: getTermStartPreview(
+        configuredSemester && configuredSemester.weekMondayDate
+          ? configuredSemester.weekMondayDate
+          : this.data.configWeekMondayDate,
+        configuredSemester && configuredSemester.weekNumber ? configuredSemester.weekNumber : this.data.configWeekNumber
+      )
     };
   },
 
@@ -327,10 +371,7 @@ Page({
     }
 
     this.setData({
-      configSemesterIndex: index,
-      configSemesterId: semester.id,
-      configSemesterName: semester.label,
-      configTerm: semester.term || this.data.configTerm
+      ...this.buildSemesterState(this.data.semesterSourceOptions, this.data.configSchoolId, semester.id, this.data.termWeekSchoolGroups)
     });
   },
 
@@ -345,26 +386,61 @@ Page({
 
     this.setData({
       configWeekNumber,
-      configWeekIndex: configWeekNumber - 1
+      configWeekIndex: configWeekNumber - 1,
+      configTermStartDatePreview: getTermStartPreview(this.data.configWeekMondayDate, configWeekNumber)
     });
   },
 
-  onConfigDateChange(event) {
+  openTermWeekEditor(event) {
+    const dataset = event && event.currentTarget && event.currentTarget.dataset || {};
+    const weekNumber = Number(dataset.weekNumber) || 1;
+    const weekMondayDate = dataset.weekMondayDate || dataset.termStartDate || formatDateInput();
+    const schoolId = String(dataset.schoolId || '').trim();
+    const semesterId = String(dataset.semesterId || '').trim();
+
     this.setData({
-      configWeekMondayDate: event.detail.value
+      termWeekEditorVisible: true,
+      configSchoolId: schoolId,
+      configSchoolName: dataset.schoolName || this.data.configSchoolName,
+      configSemesterId: semesterId,
+      configSemesterName: dataset.label || this.data.configSemesterName,
+      configTerm: dataset.term || dataset.label || this.data.configTerm,
+      configWeekNumber: weekNumber,
+      configWeekIndex: weekNumber - 1,
+      configWeekMondayDate: weekMondayDate,
+      configTermStartDatePreview: getTermStartPreview(weekMondayDate, weekNumber)
     });
   },
 
-  openCalendar() {
+  closeTermWeekEditor() {
+    this.setData({
+      termWeekEditorVisible: false
+    });
+  },
+
+  openCalendar(event) {
+    const dataset = event && event.currentTarget && event.currentTarget.dataset || {};
+    const dateText = dataset.date || this.data.configWeekMondayDate;
+
     this.setData({
       calendarVisible: true,
-      ...buildCalendarState(this.data.configWeekMondayDate)
+      calendarTarget: dataset.schoolId && dataset.semesterId ? {
+        schoolId: dataset.schoolId,
+        schoolName: dataset.schoolName || '',
+        semesterId: dataset.semesterId,
+        term: dataset.term || '',
+        label: dataset.label || '',
+        weekNumber: Number(dataset.weekNumber) || 1,
+        date: dateText
+      } : null,
+      ...buildCalendarState(dateText)
     });
   },
 
   closeCalendar() {
     this.setData({
-      calendarVisible: false
+      calendarVisible: false,
+      calendarTarget: null
     });
   },
 
@@ -398,13 +474,83 @@ Page({
       return;
     }
 
+    if (this.data.calendarTarget) {
+      this.saveTermWeekRow(Object.assign({}, this.data.calendarTarget, {
+        date
+      }));
+      return;
+    }
+
+    const configWeekMondayDate = date;
+
     this.setData({
-      configWeekMondayDate: date,
-      calendarVisible: false
+      configWeekMondayDate,
+      configTermStartDatePreview: getTermStartPreview(configWeekMondayDate, this.data.configWeekNumber),
+      calendarVisible: false,
+      calendarTarget: null
     });
   },
 
   noop() {},
+
+  buildTermWeekGroupsWithSaving(groups, savingKey = '') {
+    return (Array.isArray(groups) ? groups : []).map((group) => ({
+      ...group,
+      semesters: (Array.isArray(group.semesters) ? group.semesters : []).map((semester) => {
+        const key = `${semester.schoolId}_${semester.semesterId}`;
+
+        return {
+          ...semester,
+          saving: key === savingKey
+        };
+      })
+    }));
+  },
+
+  async saveTermWeekRow(row) {
+    if (!row || !row.schoolId || !row.semesterId || !row.date || this.data.savingTermWeekKey) {
+      return;
+    }
+
+    const savingKey = `${row.schoolId}_${row.semesterId}`;
+
+    this.setData({
+      savingTermWeekKey: savingKey,
+      termWeekSchoolGroups: this.buildTermWeekGroupsWithSaving(this.data.termWeekSchoolGroups, savingKey)
+    });
+
+    try {
+      await callGetSchedule({
+        action: 'adminSaveTermWeekConfig',
+        schoolId: row.schoolId,
+        semesterId: row.semesterId,
+        term: row.term || row.label,
+        weekNumber: row.weekNumber || this.data.configWeekNumber || 1,
+        weekMondayDate: row.date
+      }, '保存学期周配置失败');
+
+      this.setData({
+        calendarVisible: false,
+        calendarTarget: null,
+        termWeekEditorVisible: false
+      });
+      await this.loadTermWeekItems();
+      wx.showToast({
+        title: '已保存',
+        icon: 'success'
+      });
+    } catch (error) {
+      wx.showToast({
+        title: error.messageText || error.message || '保存失败',
+        icon: 'none'
+      });
+    } finally {
+      this.setData({
+        savingTermWeekKey: '',
+        termWeekSchoolGroups: this.buildTermWeekGroupsWithSaving(this.data.termWeekSchoolGroups, '')
+      });
+    }
+  },
 
   async saveTermWeekConfig() {
     if (this.data.savingTermWeek) {
@@ -431,6 +577,9 @@ Page({
         weekMondayDate: this.data.configWeekMondayDate
       }, '保存学期周配置失败');
 
+      this.setData({
+        termWeekEditorVisible: false
+      });
       await this.loadTermWeekItems();
       wx.showToast({
         title: data.config ? '已保存' : '保存成功',

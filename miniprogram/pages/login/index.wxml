@@ -10,7 +10,7 @@
         <view class="hero-icon-book"></view>
       </view>
       <view class="title">绑定教务账号</view>
-      <view class="subtitle">绑定后自动同步课表、考试和成绩，12小时内优先读取已缓存的数据。</view>
+      <view class="subtitle">绑定后可同步课表、考试和成绩；平时优先读取云端已缓存数据，超过48小时建议手动更新数据库。</view>
     </view>
 
     <view class="panel form-panel">

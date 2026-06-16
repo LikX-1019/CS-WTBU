@@ -3,8 +3,9 @@ const { resetBindingState } = require('../../utils/auth');
 const { clearAll } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 
+const SCHEDULE_CACHE_MAP_KEY = 'scheduleDataBySemester';
 const CACHE_KEYS = [
-  { key: 'scheduleData', label: '课表' },
+  { key: SCHEDULE_CACHE_MAP_KEY, label: '课表' },
   { key: 'gradesData', label: '成绩' },
   { key: 'profileData', label: '个人资料' }
 ];
@@ -17,10 +18,22 @@ function hasStorage(key) {
   }
 }
 
+function getScheduleCacheCount() {
+  try {
+    const value = wx.getStorageSync(SCHEDULE_CACHE_MAP_KEY) || {};
+    const keys = Object.keys(value).filter((key) => value[key] && typeof value[key] === 'object');
+    return keys.length;
+  } catch (error) {
+    return hasStorage('scheduleData') || hasStorage('currentScheduleData') ? 1 : 0;
+  }
+}
+
 function getCacheText() {
   const labels = CACHE_KEYS
-    .filter((item) => hasStorage(item.key))
-    .map((item) => item.label);
+    .filter((item) => item.key !== SCHEDULE_CACHE_MAP_KEY ? hasStorage(item.key) : getScheduleCacheCount() > 0)
+    .map((item) => item.key === SCHEDULE_CACHE_MAP_KEY
+      ? `课表(${getScheduleCacheCount()}个学期)`
+      : item.label);
 
   return labels.length > 0 ? `已缓存：${labels.join('、')}` : '暂无本机缓存';
 }

@@ -4,12 +4,16 @@ const crypto = require('crypto');
 const { CookieJar } = require('tough-cookie');
 const { HttpCookieAgent, HttpsCookieAgent } = require('http-cookie-agent/http');
 const { getErrorMessage, maskStudentId } = require('../common');
+const MIN_SCHEDULE_SEMESTER_START_YEAR = 2025;
 const EDU_CONFIG = {
   baseUrl: 'https://jxgl.wtbu.edu.cn',
   loginPath: '/eams/login.action',
   homePath: '/eams/home.action',
   scheduleIndexPath: '/eams/courseTableForStd.action',
   scheduleTablePath: '/eams/courseTableForStd!courseTable.action'
+};
+const scheduleFetchConfig = {
+  semesterSwitchDelayMs: 2000
 };
 
 function createEduClient() {
@@ -384,9 +388,40 @@ function getCurrentSemesterLabel(indexHtml) {
   return selectedOptionText || inputValue || (textMatch ? textMatch[0] : '');
 }
 
+function getSemesterTermName(termIndex) {
+  return termIndex === 1 ? '\u4e00' : (termIndex === 2 ? '\u4e8c' : '');
+}
+
+function normalizeSemesterLabelText(label) {
+  const text = cleanText(label).replace(/\s+/g, '');
+  const meta = parseSemesterTitle(text);
+  const termName = getSemesterTermName(meta.termIndex);
+
+  if (meta.startYear > 0 && meta.endYear > 0 && termName) {
+    return `${meta.startYear}-${meta.endYear}\u5b66\u5e74\u7b2c${termName}\u5b66\u671f`;
+  }
+
+  return text;
+}
+
+function getSemesterCanonicalKey(semester) {
+  const source = [
+    semester && semester.label,
+    semester && semester.title,
+    semester && semester.term
+  ].filter(Boolean).join(' ');
+  const meta = parseSemesterTitle(source);
+
+  if (meta.startYear > 0 && meta.endYear > 0 && meta.termIndex > 0) {
+    return `${meta.startYear}-${meta.endYear}-${meta.termIndex}`;
+  }
+
+  return '';
+}
+
 function addSemester(semesters, id, label, options = {}) {
   const semesterId = String(id || '').trim();
-  const formattedLabel = formatSemesterLabel(label, options.schoolYear, options.termName);
+  const formattedLabel = normalizeSemesterLabelText(formatSemesterLabel(label, options.schoolYear, options.termName));
 
   if (!semesterId || semesters.some((semester) => semester.id === semesterId)) {
     return;
@@ -405,14 +440,22 @@ function mergeSemesters(...groups) {
 
   groups.forEach((group) => {
     (Array.isArray(group) ? group : []).forEach((semester) => {
-      const existing = merged.find((item) => item.id === semester.id);
+      const semesterKey = getSemesterCanonicalKey(semester);
+      const existing = merged.find((item) => (
+        item.id === semester.id ||
+        (semesterKey && getSemesterCanonicalKey(item) === semesterKey)
+      ));
 
       if (existing) {
+        if (semester.selected && existing.id !== semester.id) {
+          existing.id = semester.id;
+        }
+
         existing.selected = Boolean(existing.selected || semester.selected);
 
         if ((!existing.label || existing.label === `学期 ${existing.id}`) && semester.label) {
-          existing.label = semester.label;
-          existing.title = semester.title || semester.label;
+          existing.label = normalizeSemesterLabelText(semester.label);
+          existing.title = normalizeSemesterLabelText(semester.title || semester.label);
         }
 
         return;
@@ -425,6 +468,31 @@ function mergeSemesters(...groups) {
   });
 
   return merged.sort((left, right) => compareSemesterTitle(right.label, left.label));
+}
+
+function dedupeSemesters(semesters) {
+  return mergeSemesters(semesters);
+}
+
+function getSemesterStartYear(semester) {
+  const source = [
+    semester && semester.label,
+    semester && semester.title,
+    semester && semester.term,
+    semester && semester.id
+  ].filter(Boolean).join(' ');
+  const meta = parseSemesterTitle(source);
+
+  return meta.startYear;
+}
+
+function filterRecentSemesters(semesters) {
+  return (Array.isArray(semesters) ? semesters : [])
+    .filter((semester) => {
+      const startYear = getSemesterStartYear(semester);
+
+      return startYear < 0 || startYear >= MIN_SCHEDULE_SEMESTER_START_YEAR;
+    });
 }
 
 function extractSemesterFromObjectLiteral(block) {
@@ -509,12 +577,12 @@ function parseSemesters(indexHtml) {
     addSemester(semesters, currentSemesterId, getCurrentSemesterLabel(html), { selected: true });
   }
 
-  return mergeSemesters(
+  return filterRecentSemesters(mergeSemesters(
     semesters.map((semester) => ({
       ...semester,
       selected: semester.selected || semester.id === currentSemesterId
     }))
-  );
+  ));
 }
 
 async function fetchSchedule(client, options = {}) {
@@ -541,6 +609,10 @@ async function fetchSchedule(client, options = {}) {
     'setting.kind': 'std',
     startWeek: ''
   });
+
+  if (requestedSemesterId && requestedSemesterId !== currentSemesterId && scheduleFetchConfig.semesterSwitchDelayMs > 0) {
+    await sleep(scheduleFetchConfig.semesterSwitchDelayMs);
+  }
 
   const response = await client.post(EDU_CONFIG.scheduleTablePath, tablePayload.toString(), {
     headers: {
@@ -1159,16 +1231,18 @@ function extractGradeRecords(gradesHtml, defaultTerm = '') {
 }
 
 function parseSemesterTitle(title) {
-  const text = cleanText(title);
+  const text = cleanText(title).replace(/\s+/g, '');
   const rangeMatch = text.match(/(20\d{2})\s*[-/]\s*(20\d{2})/);
   const singleYearMatch = rangeMatch ? null : text.match(/(20\d{2})/);
   const startYear = rangeMatch ? Number(rangeMatch[1]) : (singleYearMatch ? Number(singleYearMatch[1]) : -1);
   const endYear = rangeMatch ? Number(rangeMatch[2]) : startYear;
+  const termMatch = text.match(/(?:第?([12一二])学期|学期([12一二]))/);
+  const termText = termMatch ? (termMatch[1] || termMatch[2]) : '';
   let termIndex = 0;
 
-  if (/(?:\u7b2c?\s*2\s*\u5b66\u671f|\u5b66\u671f\s*2|\u7b2c?\s*\u4e8c\s*\u5b66\u671f|\u4e0b\u5b66\u671f|\u6625\u5b66\u671f)/.test(text)) {
+  if (termText === '2' || termText === '二' || /(?:下学期|春学期)/.test(text)) {
     termIndex = 2;
-  } else if (/(?:\u7b2c?\s*1\s*\u5b66\u671f|\u5b66\u671f\s*1|\u7b2c?\s*\u4e00\s*\u5b66\u671f|\u4e0a\u5b66\u671f|\u79cb\u5b66\u671f)/.test(text)) {
+  } else if (termText === '1' || termText === '一' || /(?:上学期|秋学期)/.test(text)) {
     termIndex = 1;
   }
 
@@ -1824,16 +1898,22 @@ async function fetchScheduleWithClient(client, homeHtml, studentId, options = {}
   const parsedSchedule = parseSchedule(scheduleResult.html);
   let semesters = scheduleResult.semesters;
 
-  if (
-    (scheduleResult.selectedSemesterId || parsedSchedule.term) &&
-    !semesters.some((semester) => semester.id === scheduleResult.selectedSemesterId)
-  ) {
-    semesters = [{
+  if (scheduleResult.selectedSemesterId || parsedSchedule.term) {
+    semesters = dedupeSemesters([{
       id: scheduleResult.selectedSemesterId || '',
       title: parsedSchedule.term || '当前学期',
       label: parsedSchedule.term || '当前学期',
       selected: true
-    }, ...semesters];
+    }, ...semesters]);
+  } else {
+    semesters = dedupeSemesters(semesters);
+  }
+
+  if (scheduleResult.selectedSemesterId) {
+    semesters = semesters.map((semester) => ({
+      ...semester,
+      selected: semester.id === scheduleResult.selectedSemesterId
+    }));
   }
 
   const schedule = {
@@ -1841,6 +1921,57 @@ async function fetchScheduleWithClient(client, homeHtml, studentId, options = {}
     semesters,
     selectedSemesterId: scheduleResult.selectedSemesterId
   };
+
+  if (options.includeAllSemesterCourses) {
+    const groups = [];
+    const seen = new Set();
+    const prioritizedSemesters = [...semesters];
+    const selectedSemester = prioritizedSemesters.find((semester) => semester.id === scheduleResult.selectedSemesterId);
+
+    function pushSemesterCourses(semesterId, term, label, courses) {
+      const id = String(semesterId || '').trim();
+
+      if (!id || seen.has(id)) {
+        return;
+      }
+
+      seen.add(id);
+      groups.push({
+        semesterId: id,
+        term: term || label || id,
+        label: label || term || id,
+        courses: Array.isArray(courses) ? courses : []
+      });
+    }
+
+    pushSemesterCourses(
+      scheduleResult.selectedSemesterId,
+      parsedSchedule.term,
+      selectedSemester && (selectedSemester.label || selectedSemester.title),
+      parsedSchedule.courses
+    );
+
+    for (const semester of prioritizedSemesters) {
+      if (!semester || !semester.id || seen.has(semester.id)) {
+        continue;
+      }
+
+      const semesterScheduleResult = await fetchSchedule(client, {
+        semesterId: semester.id
+      });
+      const semesterSchedule = parseSchedule(semesterScheduleResult.html);
+
+      pushSemesterCourses(
+        semester.id,
+        semesterSchedule.term,
+        semester.label || semester.title,
+        semesterSchedule.courses
+      );
+    }
+
+    schedule.semesterCourses = groups;
+  }
+
   const exams = options.includeExams ? await fetchExams(client, homeHtml) : [];
   const profile = options.includeProfile ? await fetchProfile(client, homeHtml, studentId) : null;
 
@@ -1878,6 +2009,7 @@ async function fetchAllByCredentials(studentId, password, options = {}) {
   const homeHtml = await loginToEduSystem(client, studentId, password);
   const scheduleResult = await fetchScheduleWithClient(client, homeHtml, studentId, {
     includeExams: true,
+    includeAllSemesterCourses: options.includeAllSemesterCourses !== false,
     includeProfile: Boolean(options.includeProfile),
     semesterId: options.semesterId
   });
@@ -1911,10 +2043,16 @@ module.exports = {
     getExamBatchPaths,
     mergeGradePages,
     mergeExams,
+    dedupeSemesters,
+    fetchSchedule,
+    fetchScheduleWithClient,
     parseSemesters,
     parseGrades,
     parseExams,
     parseSchedule,
+    setSemesterSwitchDelayMs(ms) {
+      scheduleFetchConfig.semesterSwitchDelayMs = Math.max(0, Number(ms) || 0);
+    },
     setExamBatchFetchDelayMs(ms) {
       examFetchConfig.examBatchFetchDelayMs = Math.max(0, Number(ms) || 0);
     }

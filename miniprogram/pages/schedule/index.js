@@ -1,6 +1,6 @@
 const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
-const { loadSchedule, submitTermWeekReport } = require('../../utils/dataStore');
+const { loadCurrentSchedule, loadSchedule } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 const {
   buildWeekOptions,
@@ -15,37 +15,93 @@ const {
 const WEEK_SWIPE_MIN_DISTANCE = 60;
 const WEEK_SWIPE_MAX_VERTICAL_OFFSET = 80;
 
-function formatDateInput(date = new Date()) {
-  const value = new Date(date);
-  const day = value.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-
-  value.setDate(value.getDate() + offset);
-
-  return [
-    value.getFullYear(),
-    String(value.getMonth() + 1).padStart(2, '0'),
-    String(value.getDate()).padStart(2, '0')
-  ].join('-');
-}
-
 function buildTermWeekState(termWeek) {
   const config = termWeek && termWeek.config;
-  const report = termWeek && termWeek.report;
-  const progress = termWeek && termWeek.progress || {};
-  const progressText = config ?
-    `${config.sourceText || '官方配置'} · 第1周从 ${config.termStartDate} 开始` :
-    `已有 ${progress.reportCount || 0}/${progress.targetCount || 10} 位同学上报`;
 
   return {
     termWeekConfig: config || null,
-    termWeekReport: report || null,
-    termWeekProgress: progress,
-    canSubmitTermWeekReport: Boolean(termWeek && termWeek.canSubmitReport),
-    termWeekProgressText: progressText,
-    reportWeekNumber: report && report.weekNumber ? report.weekNumber : 1,
-    reportWeekIndex: report && report.weekNumber ? report.weekNumber - 1 : 0,
-    reportWeekMondayDate: report && report.weekMondayDate ? report.weekMondayDate : formatDateInput()
+    termWeekProgressText: config
+      ? `${config.sourceText || '管理员配置'} · 第1周从 ${config.termStartDate} 开始`
+      : '管理员暂未配置该学期起始周'
+  };
+}
+
+function getSemesterCanonicalKey(semester = {}) {
+  const text = String(semester.label || '').replace(/\s+/g, '');
+  const match = text.match(/(20\d{2})[-/](20\d{2}).*?(?:第?([12])学期|第?([一二])学期|学期([12]))/);
+
+  if (!match) {
+    return `${String(semester.id || '').trim()}::${text}`;
+  }
+
+  const termIndex = match[3] || match[5] || (match[4] === '一' ? '1' : (match[4] === '二' ? '2' : ''));
+  return `${match[1]}-${match[2]}-${termIndex}`;
+}
+
+function normalizeSemestersForView(semesters = [], preferredSemesterId = '') {
+  const deduped = new Map();
+  const preferredId = String(preferredSemesterId || '');
+
+  (Array.isArray(semesters) ? semesters : []).forEach((semester) => {
+    const item = {
+      id: String(semester.id || ''),
+      label: semester.label || semester.title || '未命名学期',
+      selected: Boolean(semester.selected)
+    };
+
+    if (!item.id && !item.label) {
+      return;
+    }
+
+    const key = getSemesterCanonicalKey(item);
+    const existing = deduped.get(key);
+
+    if (
+      !existing ||
+      (item.selected && !existing.selected) ||
+      (preferredId && item.id === preferredId && existing.id !== preferredId) ||
+      (item.id && !existing.id)
+    ) {
+      deduped.set(key, item);
+    }
+  });
+
+  const values = [...deduped.values()];
+  const selected = values.filter((semester) => semester.selected || (preferredId && semester.id === preferredId));
+  const others = values.filter((semester) => !selected.includes(semester));
+
+  return [...selected, ...others];
+}
+
+function resolveScheduleViewState(data, previousTermStartDate = '', currentWeekValue = getCurrentTeachingWeek(), options = {}) {
+  const courses = Array.isArray(data.courses) ? data.courses : [];
+  const semesters = normalizeSemestersForView(Array.isArray(data.semesters) ? data.semesters : [], data.selectedSemesterId);
+  const selectedId = String(data.selectedSemesterId || '');
+  const selectedIndex = semesters.findIndex((semester) => semester.id === selectedId);
+  const safeIndex = selectedIndex >= 0
+    ? selectedIndex
+    : Math.max(semesters.findIndex((semester) => Boolean(semester.selected)), 0);
+  const activeSemester = semesters[safeIndex] || semesters[0] || {};
+  const currentWeek = clampWeek(
+    options.force || !options.semesterId || previousTermStartDate !== (data.termStartDate || '')
+      ? getCurrentTeachingWeek(new Date(), data.termStartDate)
+      : currentWeekValue
+  );
+
+  return {
+    courses,
+    semesters,
+    selectedIndex: safeIndex,
+    activeSemester,
+    currentWeek
+  };
+}
+
+function createLoadOptions(options = {}, semesterId = '') {
+  return {
+    force: Boolean(options.force),
+    fromDatabase: Boolean(options.fromDatabase),
+    semesterId
   };
 }
 
@@ -65,14 +121,7 @@ Page({
     periods: buildPeriods(),
     lessons: [],
     termWeekConfig: null,
-    termWeekReport: null,
-    termWeekProgress: null,
-    canSubmitTermWeekReport: false,
     termWeekProgressText: '',
-    reportWeekNumber: 1,
-    reportWeekIndex: 0,
-    reportWeekMondayDate: formatDateInput(),
-    submittingTermWeek: false,
     selectedLesson: null,
     lessonDetailVisible: false,
     loading: false,
@@ -80,18 +129,20 @@ Page({
   }),
 
   onShow() {
-    this.loadSchedule();
+    this.loadSchedule(undefined, { fromDatabase: true });
   },
 
   onPullDownRefresh() {
-    this.loadSchedule(this.data.selectedSemesterId, { force: true }).finally(() => {
+    this.loadSchedule(this.data.selectedSemesterId, {
+      fromDatabase: true
+    }).finally(() => {
       wx.stopPullDownRefresh();
     });
   },
 
   async loadSchedule(semesterId, options = {}) {
     if (this.data.loading) {
-      return;
+      return false;
     }
 
     this.setData({
@@ -101,43 +152,54 @@ Page({
 
     try {
       await ensureBound();
-      const selectedSemesterId = semesterId || this.data.selectedSemesterId;
-      const data = await loadSchedule({
-        force: Boolean(options.force || semesterId),
-        semesterId: selectedSemesterId
-      });
 
-      const courses = Array.isArray(data.courses) ? data.courses : [];
-      const semesters = this.normalizeSemesters(data);
-      const selectedIndex = this.getSelectedSemesterIndex(semesters, data.selectedSemesterId);
-      const activeSemester = semesters[selectedIndex] || semesters[0] || {};
+      const requestOptions = createLoadOptions(options, semesterId);
+      const data = semesterId
+        ? await loadSchedule(requestOptions)
+        : await loadCurrentSchedule(requestOptions);
+
       const termWeekState = buildTermWeekState(data.termWeek || {});
-      const currentWeek = clampWeek(this.data.currentWeek);
+      const previousTermStartDate = this.data.currentSchedule && this.data.currentSchedule.termStartDate || '';
+      const viewState = resolveScheduleViewState(data, previousTermStartDate, this.data.currentWeek, {
+        force: requestOptions.force,
+        semesterId
+      });
 
       this.setData({
-        courses,
+        courses: viewState.courses,
         currentSchedule: data,
-        currentWeek,
-        weekText: formatWeekText(data.term, currentWeek, data.termStartDate),
-        days: buildDays(currentWeek, data.termStartDate),
-        lessons: buildLessons(courses, currentWeek),
+        currentWeek: viewState.currentWeek,
+        weekText: formatWeekText(data.term, viewState.currentWeek, data.termStartDate),
+        days: buildDays(viewState.currentWeek, data.termStartDate),
+        lessons: buildLessons(viewState.courses, viewState.currentWeek),
         selectedLesson: null,
         lessonDetailVisible: false,
-        semesterOptions: semesters,
-        semesterIndex: selectedIndex,
-        selectedSemesterId: activeSemester.id || '',
-        selectedSemesterLabel: activeSemester.label || data.term || '当前学期',
+        semesterOptions: viewState.semesters,
+        semesterIndex: viewState.selectedIndex,
+        selectedSemesterId: data.selectedSemesterId || viewState.activeSemester.id || '',
+        selectedSemesterLabel: data.term || viewState.activeSemester.label || '当前学期',
         ...termWeekState
       });
+
+      return true;
     } catch (error) {
       if (error.code === 'NO_BINDING') {
         redirectToLogin();
-        return;
+        return false;
+      }
+
+      if (error.code === 'SEMESTER_NOT_CACHED') {
+        wx.showToast({
+          title: error.messageText || error.message || '数据库中暂无该学期课表',
+          icon: 'none'
+        });
+        return false;
       }
 
       this.setData({
         errorText: error.messageText || error.message || '课表加载失败'
       });
+      return false;
     } finally {
       this.setData({ loading: false });
     }
@@ -212,12 +274,28 @@ Page({
       return;
     }
 
-    this.setData({
-      semesterIndex: index,
-      selectedSemesterId: semester.id,
-      selectedSemesterLabel: semester.label
+    const previousSemesterIndex = this.data.semesterIndex;
+    const previousSemesterId = this.data.selectedSemesterId;
+    const previousSemesterLabel = this.data.selectedSemesterLabel;
+
+    this.loadSchedule(semester.id, {
+      fromDatabase: true
+    }).then((switched) => {
+      if (!switched) {
+        this.setData({
+          semesterIndex: previousSemesterIndex,
+          selectedSemesterId: previousSemesterId,
+          selectedSemesterLabel: previousSemesterLabel
+        });
+        return;
+      }
+
+      this.setData({
+        semesterIndex: index,
+        selectedSemesterId: semester.id,
+        selectedSemesterLabel: semester.label
+      });
     });
-    this.loadSchedule(semester.id, { force: true });
   },
 
   switchWeek(week) {
@@ -233,60 +311,6 @@ Page({
       selectedLesson: null,
       lessonDetailVisible: false
     });
-  },
-
-  onReportDateChange(event) {
-    this.setData({
-      reportWeekMondayDate: event.detail.value
-    });
-  },
-
-  onReportWeekChange(event) {
-    const reportWeekNumber = Number(event.detail.value) + 1;
-
-    this.setData({
-      reportWeekNumber,
-      reportWeekIndex: reportWeekNumber - 1
-    });
-  },
-
-  async submitTermWeekReport() {
-    if (this.data.submittingTermWeek || !this.data.currentSchedule) {
-      return;
-    }
-
-    this.setData({ submittingTermWeek: true });
-
-    try {
-      const termWeek = await submitTermWeekReport(this.data.currentSchedule, {
-        weekNumber: this.data.reportWeekNumber,
-        weekMondayDate: this.data.reportWeekMondayDate
-      });
-      const currentSchedule = Object.assign({}, this.data.currentSchedule, {
-        termWeek,
-        termStartDate: termWeek && termWeek.termStartDate || this.data.currentSchedule.termStartDate || ''
-      });
-      const currentWeek = clampWeek(this.data.currentWeek);
-
-      this.setData({
-        currentSchedule,
-        weekText: formatWeekText(currentSchedule.term, currentWeek, currentSchedule.termStartDate),
-        days: buildDays(currentWeek, currentSchedule.termStartDate),
-        lessons: buildLessons(this.data.courses, currentWeek),
-        ...buildTermWeekState(termWeek)
-      });
-      wx.showToast({
-        title: termWeek && termWeek.config ? '已生成官方配置' : '已上报',
-        icon: 'success'
-      });
-    } catch (error) {
-      wx.showToast({
-        title: error.messageText || error.message || '上报失败',
-        icon: 'none'
-      });
-    } finally {
-      this.setData({ submittingTermWeek: false });
-    }
   },
 
   openLessonDetail(event) {
@@ -311,31 +335,6 @@ Page({
 
   noop() {},
 
-  normalizeSemesters(data) {
-    const semesters = (Array.isArray(data.semesters) ? data.semesters : [])
-      .map((semester) => ({
-        id: String(semester.id || ''),
-        label: semester.label || semester.title || '未命名学期'
-      }))
-      .filter((semester) => semester.id || semester.label);
-
-    if (semesters.length > 0) {
-      return semesters;
-    }
-
-    return [{
-      id: data.selectedSemesterId || '',
-      label: data.term || '当前学期'
-    }];
-  },
-
-  getSelectedSemesterIndex(semesters, selectedSemesterId) {
-    const selectedId = String(selectedSemesterId || '');
-    const index = semesters.findIndex((semester) => semester.id === selectedId);
-
-    return index >= 0 ? index : 0;
-  },
-
   goHome() {
     goTab('home');
   },
@@ -352,3 +351,11 @@ Page({
     goTab('profile');
   }
 });
+
+module.exports = {
+  __test__: {
+    getSemesterCanonicalKey,
+    normalizeSemestersForView,
+    resolveScheduleViewState
+  }
+};

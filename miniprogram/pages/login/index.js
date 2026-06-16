@@ -1,6 +1,6 @@
 const { callGetSchedule, toMessage } = require('../../utils/api');
 const { markBound } = require('../../utils/auth');
-const { setGrades, setProfile, setSchedule } = require('../../utils/dataStore');
+const { setCurrentSchedule, setGrades, setProfile, setSchedule } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 
 const DEFAULT_SCHOOL = {
@@ -178,6 +178,7 @@ Page({
       }, '课表获取失败');
 
       setSchedule(data);
+      setCurrentSchedule(data);
       if (data.grades) {
         setGrades(data.grades);
       }

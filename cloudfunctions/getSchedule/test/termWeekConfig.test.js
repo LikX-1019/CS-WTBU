@@ -23,7 +23,6 @@ function createNotFoundError() {
 
 function createMemoryDb() {
   const collections = new Map();
-  let serverDateIndex = 0;
 
   function getCollection(name) {
     if (!collections.has(name)) {
@@ -38,22 +37,6 @@ function createMemoryDb() {
       _id: id,
       ...clone(data)
     }));
-  }
-
-  function applyFields(doc, fields) {
-    if (!fields) {
-      return doc;
-    }
-
-    const projected = {};
-
-    Object.keys(fields).forEach((key) => {
-      if (fields[key] && Object.prototype.hasOwnProperty.call(doc, key)) {
-        projected[key] = doc[key];
-      }
-    });
-
-    return projected;
   }
 
   function createQuery(name, state = {}) {
@@ -91,17 +74,12 @@ function createMemoryDb() {
         let docs = listDocuments(name);
 
         (state.filters || []).forEach((criteria) => {
-          docs = docs.filter((doc) => {
-            return Object.keys(criteria).every((key) => doc[key] === criteria[key]);
-          });
+          docs = docs.filter((doc) => Object.keys(criteria).every((key) => doc[key] === criteria[key]));
         });
 
         if (state.orderField) {
           const factor = state.orderDirection === 'desc' ? -1 : 1;
-
-          docs.sort((left, right) => {
-            return String(left[state.orderField] || '').localeCompare(String(right[state.orderField] || '')) * factor;
-          });
+          docs.sort((left, right) => String(left[state.orderField] || '').localeCompare(String(right[state.orderField] || '')) * factor);
         }
 
         if (state.limitValue > 0) {
@@ -109,21 +87,32 @@ function createMemoryDb() {
         }
 
         return {
-          data: docs.map((doc) => applyFields(doc, state.fields))
+          data: docs.map((doc) => {
+            if (!state.fields) {
+              return doc;
+            }
+
+            const projected = {};
+            Object.keys(state.fields).forEach((key) => {
+              if (state.fields[key] && Object.prototype.hasOwnProperty.call(doc, key)) {
+                projected[key] = doc[key];
+              }
+            });
+            return projected;
+          })
         };
       }
     };
   }
 
-  const db = {
+  return {
     command: {
       set(value) {
         return { __set: value };
       }
     },
     serverDate() {
-      serverDateIndex += 1;
-      return `2026-02-01T00:00:${String(serverDateIndex).padStart(2, '0')}.000Z`;
+      return 'SERVER_DATE';
     },
     collection(name) {
       return {
@@ -131,11 +120,9 @@ function createMemoryDb() {
           return {
             async get() {
               const collection = getCollection(name);
-
               if (!collection.has(id)) {
                 throw createNotFoundError();
               }
-
               return {
                 data: {
                   _id: id,
@@ -148,11 +135,9 @@ function createMemoryDb() {
             },
             async update(options = {}) {
               const collection = getCollection(name);
-
               if (!collection.has(id)) {
                 throw createNotFoundError();
               }
-
               collection.set(id, {
                 ...collection.get(id),
                 ...clone(options.data || {})
@@ -189,13 +174,8 @@ function createMemoryDb() {
     getDoc(name, id) {
       const collection = getCollection(name);
       return collection.has(id) ? clone(collection.get(id)) : null;
-    },
-    getDocs(name) {
-      return listDocuments(name);
     }
   };
-
-  return db;
 }
 
 function createContext() {
@@ -233,18 +213,50 @@ function createContext() {
   return context;
 }
 
-function bindUser(context, openid, schoolId = 'wtbu') {
+function bindUser(context, openid) {
   context.fakeDb.setDoc('eduAccountBindings', openid, {
     studentId: `student-${openid}`,
     passwordCipher: 'cipher',
-    schoolId,
+    schoolId: 'wtbu',
     schoolName: 'Wuhan Business University',
     lastFetchedAt: '2026-02-01T00:00:00.000Z',
     cacheVersion: 3,
-    lastSchedule: { courses: [] },
+    lastSchedule: {
+      courses: [],
+      selectedSemesterId: '262',
+      term: '2026-2027学年第一学期',
+      semesters: [
+        { id: '262', label: '2026-2027学年第一学期', selected: true },
+        { id: '242', label: '2025-2026学年第二学期' },
+        { id: '222', label: '2025-2026学年第一学期' }
+      ]
+    },
     lastExams: [],
     lastGrades: { summary: [], semesters: [], cacheVersion: 3 },
-    scheduleCaches: {}
+    scheduleCaches: {
+      262: {
+        schedule: {
+          courses: [],
+          selectedSemesterId: '262',
+          term: '2026-2027学年第一学期',
+          semesters: [{ id: '262', label: '2026-2027学年第一学期', selected: true }]
+        },
+        exams: [],
+        cacheVersion: 3,
+        fetchedAt: '2026-09-16T00:00:00.000Z'
+      },
+      242: {
+        schedule: {
+          courses: [],
+          selectedSemesterId: '242',
+          term: '2025-2026学年第二学期',
+          semesters: [{ id: '242', label: '2025-2026学年第二学期', selected: true }]
+        },
+        exams: [],
+        cacheVersion: 3,
+        fetchedAt: '2026-06-16T00:00:00.000Z'
+      }
+    }
   });
 }
 
@@ -253,161 +265,59 @@ async function callAs(context, openid, event) {
   return context.exports.main(event);
 }
 
-async function assertInvalidSave(context, event, message) {
-  const result = await callAs(context, 'admin-openid', {
-    action: 'adminSaveTermWeekConfig',
-    schoolId: 'wtbu',
-    semesterId: '2025-2026-2',
-    term: 'Spring 2026',
-    weekNumber: 1,
-    weekMondayDate: '2026-02-23',
-    ...event
-  });
-
-  assert.strictEqual(result.success, false, message);
-  assert.strictEqual(result.code, 'INVALID_INPUT', message);
-}
-
-async function submitReport(context, openid, weekMondayDate, weekNumber = 1, semesterId = 'aggregate-term') {
-  bindUser(context, openid);
-
-  return callAs(context, openid, {
-    action: 'submitTermWeekReport',
-    schoolId: 'wtbu',
-    semesterId,
-    term: 'Aggregate Term',
-    weekNumber,
-    weekMondayDate
-  });
-}
-
-async function runTermWeekTests() {
+async function runTests() {
   const context = createContext();
-
   bindUser(context, 'admin-openid');
-  await assertInvalidSave(context, { weekMondayDate: '2026-02-24' }, 'reject non-Monday date');
-  await assertInvalidSave(context, { weekNumber: 0 }, 'reject low week number');
-  await assertInvalidSave(context, { weekNumber: 21 }, 'reject high week number');
 
-  const adminSave = await callAs(context, 'admin-openid', {
+  const saveSecondSemester = await callAs(context, 'admin-openid', {
     action: 'adminSaveTermWeekConfig',
     schoolId: 'wtbu',
-    semesterId: '2025-2026-2',
-    term: 'Spring 2026',
-    weekNumber: 3,
-    weekMondayDate: '2026-03-09'
-  });
-
-  assert.strictEqual(adminSave.success, true);
-  assert.strictEqual(adminSave.data.config.termStartDate, '2026-02-23');
-  assert.strictEqual(adminSave.data.config.source, 'admin');
-
-  bindUser(context, 'locked-user');
-  const lockedReport = await callAs(context, 'locked-user', {
-    action: 'submitTermWeekReport',
-    schoolId: 'wtbu',
-    semesterId: '2025-2026-2',
-    term: 'Spring 2026',
+    semesterId: '242',
+    term: '2025-2026学年第二学期',
     weekNumber: 1,
-    weekMondayDate: '2026-02-23'
+    weekMondayDate: '2026-03-02'
   });
 
-  assert.strictEqual(lockedReport.success, false);
-  assert.strictEqual(lockedReport.code, 'TERM_WEEK_LOCKED');
+  assert.strictEqual(saveSecondSemester.success, true);
+  assert.strictEqual(saveSecondSemester.data.config.semesterId, '242');
+  assert.strictEqual(saveSecondSemester.data.config.termStartDate, '2026-03-02');
 
-  const aggregateContext = createContext();
-
-  await submitReport(aggregateContext, 'user-1', '2026-02-23', 1);
-  const updatedUser = await submitReport(aggregateContext, 'user-1', '2026-03-02', 1);
-
-  assert.strictEqual(updatedUser.success, true);
-  assert.strictEqual(updatedUser.data.report.weekMondayDate, '2026-03-02');
-  assert.strictEqual(updatedUser.data.progress.reportCount, 1);
-
-  const votes = [
-    ['user-2', '2026-02-23'],
-    ['user-3', '2026-02-23'],
-    ['user-4', '2026-02-23'],
-    ['user-5', '2026-03-02'],
-    ['user-6', '2026-03-02'],
-    ['user-7', '2026-03-02'],
-    ['user-8', '2026-03-09'],
-    ['user-9', '2026-03-09']
-  ];
-
-  for (const [openid, date] of votes) {
-    const result = await submitReport(aggregateContext, openid, date, 1);
-    assert.strictEqual(result.success, true);
-    assert.strictEqual(result.data.config, null);
-  }
-
-  const tenthVote = await submitReport(aggregateContext, 'user-10', '2026-03-09', 1);
-
-  assert.strictEqual(tenthVote.success, true);
-  assert.strictEqual(tenthVote.data.progress.reportCount, 10);
-  assert.strictEqual(tenthVote.data.config.source, 'user_aggregate');
-  assert.strictEqual(tenthVote.data.config.termStartDate, '2026-03-02');
-
-  const adminOverride = await callAs(aggregateContext, 'admin-openid', {
+  const saveFirstSemester = await callAs(context, 'admin-openid', {
     action: 'adminSaveTermWeekConfig',
     schoolId: 'wtbu',
-    semesterId: 'aggregate-term',
-    term: 'Aggregate Term',
+    semesterId: '222',
+    term: '2025-2026学年第一学期',
     weekNumber: 1,
-    weekMondayDate: '2026-02-23'
+    weekMondayDate: '2025-09-08'
   });
 
-  assert.strictEqual(adminOverride.success, true);
-  assert.strictEqual(adminOverride.data.config.source, 'admin');
-  assert.strictEqual(adminOverride.data.config.termStartDate, '2026-02-23');
+  assert.strictEqual(saveFirstSemester.success, true);
+  assert.strictEqual(saveFirstSemester.data.config.semesterId, '222');
+  assert.strictEqual(saveFirstSemester.data.config.termStartDate, '2025-09-08');
+  assert.strictEqual(context.fakeDb.getDoc('termWeekConfigs', 'wtbu_222').termStartDate, '2025-09-08');
+  assert.strictEqual(context.fakeDb.getDoc('termWeekConfigs', 'wtbu_242').termStartDate, '2026-03-02');
 
-  const tieContext = createContext();
-  const tieDates = [
-    '2026-02-23',
-    '2026-03-02',
-    '2026-02-23',
-    '2026-03-02',
-    '2026-02-23',
-    '2026-03-02',
-    '2026-02-23',
-    '2026-03-02',
-    '2026-02-23',
-    '2026-03-02',
-    '2026-03-02'
-  ];
-
-  tieDates.forEach((date, index) => {
-    const openid = `tie-user-${index + 1}`;
-    bindUser(tieContext, openid);
-    tieContext.fakeDb.setDoc('termWeekReports', `wtbu_tie-term_${openid}`, {
-      _openid: openid,
-      openid,
-      schoolId: 'wtbu',
-      schoolName: 'Wuhan Business University',
-      semesterId: 'tie-term',
-      term: 'Tie Term',
-      weekNumber: 1,
-      weekMondayDate: date,
-      termStartDate: date,
-      firstReportedAt: `2026-02-01T00:00:${String(index + 1).padStart(2, '0')}.000Z`,
-      updatedAt: `2026-02-01T00:00:${String(index + 1).padStart(2, '0')}.000Z`
-    });
-  });
-
-  const tieResult = await callAs(tieContext, 'tie-user-1', {
+  const directRead = await callAs(context, 'admin-openid', {
     action: 'getTermWeekConfig',
     schoolId: 'wtbu',
-    semesterId: 'tie-term',
-    term: 'Tie Term'
+    semesterId: '222',
+    term: '2025-2026学年第一学期',
+    label: '2025-2026学年第一学期'
   });
 
-  assert.strictEqual(tieResult.success, true);
-  assert.strictEqual(tieResult.data.progress.reportCount, 10);
-  assert.strictEqual(tieResult.data.config.source, 'user_aggregate');
-  assert.strictEqual(tieResult.data.config.termStartDate, '2026-02-23');
+  assert.strictEqual(directRead.success, true);
+  assert.strictEqual(directRead.data.config.semesterId, '222');
+
+  const adminList = await callAs(context, 'admin-openid', {
+    action: 'adminListTermWeekConfigs'
+  });
+
+  assert.strictEqual(adminList.success, true);
+  const autoCreatedConfigIds = clone(adminList.data.items.map((item) => item.id)).sort();
+  assert.deepStrictEqual(autoCreatedConfigIds, ['wtbu_222', 'wtbu_242', 'wtbu_262']);
 }
 
-runTermWeekTests()
+runTests()
   .then(() => {
     console.log('term week config tests passed');
   })

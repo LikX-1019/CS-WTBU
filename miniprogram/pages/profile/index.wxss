@@ -17,6 +17,15 @@
   text-align: center;
 }
 
+.cache-warning {
+  margin-bottom: 20rpx;
+  padding: 20rpx 24rpx;
+  color: #92400e;
+  background: #fff7ed;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
 .avatar-button {
   flex: 0 0 140rpx;
   width: 140rpx;

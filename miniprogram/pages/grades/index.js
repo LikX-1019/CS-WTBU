@@ -1,6 +1,6 @@
 const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
-const { getScheduleCache, loadGrades, loadSchedule } = require('../../utils/dataStore');
+const { getCurrentScheduleCache, loadCurrentSchedule, loadGrades } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 const { normalizeExamItems } = require('../../utils/schedule');
 
@@ -195,11 +195,11 @@ Page({
   },
 
   async loadExamSchedule(options = {}) {
-    const cached = getScheduleCache() || {};
+    const cached = getCurrentScheduleCache() || {};
 
     try {
       if (options.force || !cached.exams) {
-        return await loadSchedule({
+        return await loadCurrentSchedule({
           force: Boolean(options.force)
         });
       }

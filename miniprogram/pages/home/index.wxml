@@ -12,8 +12,9 @@
       <view class="calendar-mini"></view>
     </view>
 
-    <view wx:if="{{loading}}" class="soft-card state-card">正在从教务系统加载课程和考试...</view>
+    <view wx:if="{{loading}}" class="soft-card state-card">正在读取已缓存课程和考试...</view>
     <view wx:elif="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
+    <view wx:if="{{cacheWarningText}}" class="soft-card state-card state-warning">{{cacheWarningText}}</view>
 
     <view class="section-head">
       <view class="section-title">今日安排</view>

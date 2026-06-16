@@ -263,85 +263,276 @@
   font-size: 26rpx;
 }
 
-.campus-form {
-  padding: 26rpx 28rpx;
+.campus-intro {
+  margin-bottom: 18rpx;
+  padding: 6rpx 6rpx 2rpx;
+}
+
+.campus-intro-title {
+  color: #101828;
+  font-size: 34rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.campus-intro-text {
+  margin-top: 10rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+.campus-school-card {
+  padding: 22rpx;
   margin-bottom: 16rpx;
+  border: 1rpx solid #d9e2ef;
+  box-shadow: 0 12rpx 28rpx rgba(15, 23, 42, 0.05);
 }
 
-.campus-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14rpx;
-  margin-top: 20rpx;
-}
-
-.campus-input,
-.campus-save {
-  height: 68rpx;
-  box-sizing: border-box;
-  border-radius: 12rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.campus-input {
+.campus-school-head {
   display: flex;
   align-items: center;
-  padding: 0 18rpx;
-  border: 1rpx solid #d8dee8;
-  color: #101828;
-  background: #ffffff;
-}
-
-.campus-input-wide {
-  grid-column: span 2;
-}
-
-.campus-save {
-  grid-column: span 2;
-  color: #ffffff;
-  background: #2563eb;
-  line-height: 68rpx;
-}
-
-.campus-save[disabled] {
-  color: rgba(255, 255, 255, 0.76);
-  background: #93c5fd;
-}
-
-.campus-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  justify-content: space-between;
   gap: 16rpx;
   margin-bottom: 16rpx;
 }
 
-.campus-summary-card {
-  min-height: 112rpx;
+.campus-school-name {
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.campus-school-count {
+  color: #667085;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.campus-term-list {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 18rpx 12rpx;
+  gap: 12rpx;
+}
+
+.campus-term-card {
+  padding: 20rpx 18rpx;
+  border: 1rpx solid #d7dfeb;
+  border-radius: 18rpx;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+}
+
+.campus-term-card-saving {
+  opacity: 0.72;
+}
+
+.campus-term-top,
+.campus-term-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+}
+
+.campus-term-top {
+  margin-bottom: 10rpx;
+}
+
+.campus-term-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.campus-term-title {
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.campus-term-id,
+.campus-term-foot-text {
+  color: #667085;
+  font-size: 21rpx;
+  line-height: 1.45;
+}
+
+.campus-term-id {
+  margin-top: 6rpx;
+}
+
+.campus-term-state {
+  min-width: 92rpx;
+  height: 48rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  font-size: 21rpx;
+  font-weight: 800;
+  line-height: 48rpx;
   text-align: center;
 }
 
-.term-week-admin-card {
-  padding: 26rpx 28rpx;
-  margin-bottom: 16rpx;
+.campus-term-state-ready {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.campus-term-state-pending {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.campus-term-main {
+  margin-bottom: 10rpx;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.campus-term-main-empty {
+  color: #94a3b8;
+}
+
+.campus-term-arrow {
+  width: 12rpx;
+  height: 12rpx;
+  border-right: 3rpx solid #cbd5e1;
+  border-bottom: 3rpx solid #cbd5e1;
+  transform: rotate(-45deg);
+}
+
+.term-week-editor-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  padding: 24rpx;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.term-week-editor-panel {
+  width: 100%;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  box-shadow: 0 28rpx 70rpx rgba(15, 23, 42, 0.26);
+}
+
+.term-week-editor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.term-week-editor-kicker {
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.3;
+}
+
+.term-week-editor-title {
+  margin-top: 6rpx;
+  color: #101828;
+  font-size: 32rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.term-week-editor-close {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  background: #f1f5f9;
+  color: #475467;
+  font-size: 36rpx;
+  line-height: 56rpx;
+  text-align: center;
+}
+
+.term-week-editor-tip {
+  margin-top: 14rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.term-week-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.term-week-editor-field,
+.term-week-editor-save {
+  min-height: 72rpx;
+  box-sizing: border-box;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.term-week-editor-field {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 18rpx;
+  border: 1rpx solid #d8dee8;
+  color: #101828;
+  background: #f8fafc;
+}
+
+.term-week-editor-preview {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-radius: 16rpx;
+  background: #f8fafc;
+}
+
+.term-week-editor-preview-label {
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.3;
+}
+
+.term-week-editor-preview-value {
+  margin-top: 8rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.term-week-editor-save {
+  width: 100%;
+  margin-top: 18rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  line-height: 72rpx;
+}
+
+.term-week-editor-save[disabled] {
+  opacity: 0.68;
 }
 
 .calendar-mask {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 120;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
   padding: 32rpx;
   background: rgba(15, 23, 42, 0.48);
 }
 
 .calendar-panel {
   width: 100%;
+  max-width: 640rpx;
   padding: 28rpx;
   border-radius: 18rpx;
   background: #ffffff;

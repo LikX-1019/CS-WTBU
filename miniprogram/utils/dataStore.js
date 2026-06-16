@@ -1,22 +1,33 @@
 const { callGetSchedule } = require('./api');
 
 const CACHE_SCHEMA_VERSION = 3;
+const SCHEDULE_CACHE_MAP_KEY = 'scheduleDataBySemester';
 
 const store = {
   schedule: null,
+  currentSchedule: null,
+  scheduleBySemester: {},
   profile: null,
   grades: null,
   termWeek: null,
+  termWeekCacheKey: '',
   loadingSchedule: null,
+  loadingScheduleKey: '',
   loadingProfile: null,
   loadingGrades: null,
   loadingTermWeek: null,
+  loadingTermWeekKey: '',
   sessionScheduleLoaded: false,
   sessionGradesLoaded: false
 };
 
 function getTermWeekCacheKey(schoolId, semesterId) {
   return `${String(schoolId || '').trim()}::${String(semesterId || '').trim()}`;
+}
+
+function getScheduleCacheKey(semesterId) {
+  const value = String(semesterId || '').trim();
+  return value || 'current';
 }
 
 function normalizeTermWeekData(data) {
@@ -110,18 +121,142 @@ function isCurrentCache(data) {
   return data && Number(data.cacheVersion) === CACHE_SCHEMA_VERSION;
 }
 
+function normalizeScheduleCacheMap(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return {};
+  }
+
+  const result = {};
+
+  Object.keys(data).forEach((key) => {
+    if (isCurrentCache(data[key])) {
+      result[key] = data[key];
+    }
+  });
+
+  return result;
+}
+
+function getStoredScheduleCacheMap() {
+  if (store.scheduleBySemester && Object.keys(store.scheduleBySemester).length > 0) {
+    return store.scheduleBySemester;
+  }
+
+  try {
+    const cached = wx.getStorageSync(SCHEDULE_CACHE_MAP_KEY) || null;
+    const normalized = normalizeScheduleCacheMap(cached);
+
+    if (Object.keys(normalized).length > 0) {
+      store.scheduleBySemester = normalized;
+      return normalized;
+    }
+  } catch (error) {
+    return {};
+  }
+
+  return {};
+}
+
+function setStoredScheduleCacheMap(cacheMap) {
+  const normalized = normalizeScheduleCacheMap(cacheMap);
+  store.scheduleBySemester = normalized;
+  wx.setStorageSync(SCHEDULE_CACHE_MAP_KEY, normalized);
+}
+
+function persistScheduleToMap(data) {
+  if (!isCurrentCache(data)) {
+    return;
+  }
+
+  const semesterId = String(data.selectedSemesterId || '').trim();
+
+  if (!semesterId) {
+    return;
+  }
+
+  const cacheMap = getStoredScheduleCacheMap();
+  cacheMap[getScheduleCacheKey(semesterId)] = data;
+  setStoredScheduleCacheMap(cacheMap);
+}
+
+function migrateLegacyScheduleCache(legacyCache) {
+  if (!isCurrentCache(legacyCache)) {
+    return null;
+  }
+
+  persistScheduleToMap(legacyCache);
+  return legacyCache;
+}
+
 function getScheduleCache() {
   if (isCurrentCache(store.schedule)) {
     return store.schedule;
   }
 
+  const currentSemesterId = String(
+    store.currentSchedule && store.currentSchedule.selectedSemesterId || ''
+  ).trim();
+
+  if (currentSemesterId) {
+    const mapped = getSemesterScheduleCache(currentSemesterId);
+
+    if (mapped) {
+      return mapped;
+    }
+  }
+
   try {
     const cached = wx.getStorageSync('scheduleData') || null;
+    return migrateLegacyScheduleCache(cached);
+  } catch (error) {
+    return null;
+  }
+}
 
+function getCurrentScheduleCache() {
+  if (isCurrentCache(store.currentSchedule)) {
+    return store.currentSchedule;
+  }
+
+  try {
+    const cached = wx.getStorageSync('currentScheduleData') || null;
     return isCurrentCache(cached) ? cached : null;
   } catch (error) {
     return null;
   }
+}
+
+function getSemesterScheduleCache(semesterId) {
+  const normalizedSemesterId = String(semesterId || '').trim();
+
+  if (!normalizedSemesterId) {
+    return null;
+  }
+
+  const key = getScheduleCacheKey(normalizedSemesterId);
+
+  if (isCurrentCache(store.scheduleBySemester[key])) {
+    return store.scheduleBySemester[key];
+  }
+
+  const cacheMap = getStoredScheduleCacheMap();
+
+  if (isCurrentCache(cacheMap[key])) {
+    return cacheMap[key];
+  }
+
+  try {
+    const legacyCache = wx.getStorageSync('scheduleData') || null;
+
+    if (isCurrentCache(legacyCache) && String(legacyCache.selectedSemesterId || '').trim() === normalizedSemesterId) {
+      persistScheduleToMap(legacyCache);
+      return legacyCache;
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return null;
 }
 
 function getGradesCache() {
@@ -131,7 +266,6 @@ function getGradesCache() {
 
   try {
     const cached = wx.getStorageSync('gradesData') || null;
-
     return isCurrentCache(cached) ? cached : null;
   } catch (error) {
     return null;
@@ -150,54 +284,91 @@ function getProfileCache() {
   }
 }
 
-async function loadSchedule(options = {}) {
-  if (!options.force) {
-    const cached = store.sessionScheduleLoaded ? getScheduleCache() : null;
+function persistSchedule(data, options = {}) {
+  if (!data) {
+    return;
+  }
 
-    if (cached) {
+  store.sessionScheduleLoaded = true;
+
+  if (options.currentSemesterOnly) {
+    store.currentSchedule = data;
+    wx.setStorageSync('currentScheduleData', data);
+  } else {
+    store.schedule = data;
+    wx.setStorageSync('scheduleData', data);
+  }
+
+  persistScheduleToMap(data);
+}
+
+async function loadSchedule(options = {}) {
+  const useCurrentSemester = Boolean(options.currentSemesterOnly);
+  const requestedSemesterId = String(options.semesterId || '').trim();
+  const readMode = options.force ? 'force' : (options.fromDatabase ? 'db' : 'read');
+  const loadingKey = `${useCurrentSemester ? 'current' : 'schedule'}::${requestedSemesterId || 'default'}::${readMode}`;
+
+  if (!options.force && !options.fromDatabase) {
+    const cached = store.sessionScheduleLoaded
+      ? (
+        useCurrentSemester
+          ? getCurrentScheduleCache()
+          : (requestedSemesterId ? getSemesterScheduleCache(requestedSemesterId) : getScheduleCache())
+      )
+      : null;
+
+    if (cached && (!requestedSemesterId || requestedSemesterId === cached.selectedSemesterId)) {
       const data = await loadScheduleWithTermWeek(cached, {
         force: true,
-        semesterId: options.semesterId || cached.selectedSemesterId
+        semesterId: cached.selectedSemesterId
       });
 
-      store.schedule = data;
-      wx.setStorageSync('scheduleData', data);
+      persistSchedule(data, {
+        currentSemesterOnly: useCurrentSemester
+      });
+
       return data;
     }
 
-    if (store.loadingSchedule) {
+    if (store.loadingSchedule && store.loadingScheduleKey === loadingKey) {
       return store.loadingSchedule;
     }
   }
 
-  const requestData = { action: 'refresh' };
+  const requestData = options.force ? { action: 'refresh' } : {};
 
-  if (options.semesterId) {
-    requestData.semesterId = options.semesterId;
+  if (requestedSemesterId) {
+    requestData.semesterId = requestedSemesterId;
   }
 
-  if (options.force) {
-    requestData.force = true;
-  }
-
+  store.loadingScheduleKey = loadingKey;
   store.loadingSchedule = callGetSchedule(requestData, '课表加载失败')
     .then((data) => {
       return loadScheduleWithTermWeek(data, {
         force: Boolean(options.force),
-        semesterId: requestData.semesterId
+        semesterId: requestedSemesterId
       });
     })
     .then((data) => {
-      store.schedule = data;
-      store.sessionScheduleLoaded = true;
-      wx.setStorageSync('scheduleData', data);
+      persistSchedule(data, {
+        currentSemesterOnly: useCurrentSemester
+      });
+
       return data;
     })
     .finally(() => {
       store.loadingSchedule = null;
+      store.loadingScheduleKey = '';
     });
 
   return store.loadingSchedule;
+}
+
+async function loadCurrentSchedule(options = {}) {
+  return loadSchedule({
+    ...options,
+    currentSemesterOnly: true
+  });
 }
 
 async function loadGrades(options = {}) {
@@ -214,13 +385,7 @@ async function loadGrades(options = {}) {
     }
   }
 
-  const requestData = { action: 'grades' };
-
-  if (options.force) {
-    requestData.force = true;
-  }
-
-  store.loadingGrades = callGetSchedule(requestData, '成绩加载失败')
+  store.loadingGrades = callGetSchedule({ action: 'grades' }, '成绩加载失败')
     .then((data) => {
       store.grades = data;
       store.sessionGradesLoaded = true;
@@ -271,34 +436,18 @@ async function saveProfile(profile) {
   return data;
 }
 
-async function submitTermWeekReport(schedule, report) {
-  const meta = getScheduleTermWeekMeta(schedule);
-  const data = await callGetSchedule({
-    action: 'submitTermWeekReport',
-    schoolId: meta.schoolId,
-    semesterId: meta.semesterId,
-    term: meta.term,
-    weekNumber: report && report.weekNumber,
-    weekMondayDate: report && report.weekMondayDate
-  }, '学期起始周上报失败');
-  const normalized = normalizeTermWeekData(data);
-
-  store.termWeek = normalized;
-  store.termWeekCacheKey = getTermWeekCacheKey(meta.schoolId, meta.semesterId);
-
-  if (store.schedule) {
-    store.schedule = applyTermWeekToSchedule(store.schedule, normalized);
-    wx.setStorageSync('scheduleData', store.schedule);
-  }
-
-  return normalized;
-}
-
 async function refreshEduCache() {
   const data = await callGetSchedule({ action: 'refreshAll' }, '教务系统更新失败');
 
   if (data.schedule) {
-    setSchedule(data.schedule);
+    const schedule = await loadScheduleWithTermWeek(data.schedule, {
+      force: true,
+      semesterId: data.schedule.selectedSemesterId
+    });
+
+    setSchedule(schedule);
+    setCurrentSchedule(schedule);
+    data.schedule = schedule;
   }
 
   if (data.grades) {
@@ -312,8 +461,19 @@ function setSchedule(data) {
   store.schedule = data || null;
 
   if (data) {
-    store.sessionScheduleLoaded = true;
-    wx.setStorageSync('scheduleData', data);
+    persistSchedule(data, {
+      currentSemesterOnly: false
+    });
+  }
+}
+
+function setCurrentSchedule(data) {
+  store.currentSchedule = data || null;
+
+  if (data) {
+    persistSchedule(data, {
+      currentSemesterOnly: true
+    });
   }
 }
 
@@ -336,34 +496,42 @@ function setProfile(data) {
 
 function clearAll() {
   store.schedule = null;
+  store.currentSchedule = null;
+  store.scheduleBySemester = {};
   store.profile = null;
   store.grades = null;
   store.termWeek = null;
+  store.termWeekCacheKey = '';
   store.loadingSchedule = null;
+  store.loadingScheduleKey = '';
   store.loadingProfile = null;
   store.loadingGrades = null;
   store.loadingTermWeek = null;
   store.loadingTermWeekKey = '';
-  store.termWeekCacheKey = '';
   store.sessionScheduleLoaded = false;
   store.sessionGradesLoaded = false;
   wx.removeStorageSync('scheduleData');
+  wx.removeStorageSync(SCHEDULE_CACHE_MAP_KEY);
+  wx.removeStorageSync('currentScheduleData');
   wx.removeStorageSync('profileData');
   wx.removeStorageSync('gradesData');
 }
 
 module.exports = {
   clearAll,
+  getCurrentScheduleCache,
   getGradesCache,
   getProfileCache,
+  getSemesterScheduleCache,
   getScheduleCache,
+  loadCurrentSchedule,
   loadGrades,
   loadProfile,
   loadSchedule,
   loadTermWeekConfig,
   refreshEduCache,
   saveProfile,
-  submitTermWeekReport,
+  setCurrentSchedule,
   setGrades,
   setProfile,
   setSchedule

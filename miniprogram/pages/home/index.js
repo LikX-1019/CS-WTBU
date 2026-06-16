@@ -1,6 +1,6 @@
 const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
-const { loadSchedule } = require('../../utils/dataStore');
+const { loadCurrentSchedule } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 const {
   formatFetchTime,
@@ -16,6 +16,7 @@ Page({
     items: [],
     loading: false,
     errorText: '',
+    cacheWarningText: '',
     lastFetchedText: ''
   }),
 
@@ -42,11 +43,18 @@ Page({
 
     try {
       await ensureBound();
-      const data = await loadSchedule(options);
+      const data = await loadCurrentSchedule({
+        force: Boolean(options.force)
+      });
+      const fetchedTime = new Date(data.lastFetchedAt || '').getTime();
+      const cacheWarningText = Number.isFinite(fetchedTime) && fetchedTime > 0 && Date.now() - fetchedTime > 48 * 60 * 60 * 1000
+        ? '课表数据已超过48小时，建议到个人页更新数据库。'
+        : '';
 
       this.setData({
         weekText: formatWeekText(data.term, undefined, data.termStartDate),
         items: getTodayScheduleItems(data.courses, data.exams, data.termStartDate),
+        cacheWarningText,
         lastFetchedText: formatFetchTime(data.lastFetchedAt)
       });
     } catch (error) {

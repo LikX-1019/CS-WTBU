@@ -18,10 +18,12 @@ const TERM_WEEK_CONFIG_COLLECTION = 'termWeekConfigs';
 const TERM_WEEK_REPORT_COLLECTION = 'termWeekReports';
 const PASSWORD_SECRET_ENV = 'EDU_PASSWORD_SECRET';
 const ADMIN_OPENIDS_ENV = 'ADMIN_OPENIDS';
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 const CACHE_SCHEMA_VERSION = 3;
 const TERM_WEEK_REPORT_TARGET = 10;
 const TERM_WEEK_MAX_WEEK = 20;
+const MIN_TERM_SEMESTER_START_YEAR = 2025;
+const ensuredCollections = new Set();
 function getOpenId() {
   const wxContext = cloud.getWXContext();
   const openid = wxContext.OPENID;
@@ -102,6 +104,72 @@ function formatDateText(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function getSemesterStartYear(value) {
+  const text = String(value || '');
+  const rangeMatch = text.match(/(20\d{2})\s*[-/]\s*(20\d{2})/);
+  const singleYearMatch = rangeMatch ? null : text.match(/(20\d{2})/);
+
+  if (rangeMatch) {
+    return Number(rangeMatch[1]);
+  }
+
+  if (singleYearMatch) {
+    return Number(singleYearMatch[1]);
+  }
+
+  return -1;
+}
+
+function isAllowedSemesterOption(semesterId, label, term) {
+  const startYear = getSemesterStartYear([label, term, semesterId].filter(Boolean).join(' '));
+
+  return startYear < 0 || startYear >= MIN_TERM_SEMESTER_START_YEAR;
+}
+
+function parseSemesterTitle(value) {
+  const text = String(value || '').replace(/\s+/g, '');
+  const rangeMatch = text.match(/(20\d{2})\s*[-/]\s*(20\d{2})/);
+  const singleYearMatch = rangeMatch ? null : text.match(/(20\d{2})/);
+  const startYear = rangeMatch ? Number(rangeMatch[1]) : (singleYearMatch ? Number(singleYearMatch[1]) : -1);
+  const endYear = rangeMatch ? Number(rangeMatch[2]) : startYear;
+  let termIndex = 0;
+
+  if (/(?:第?\s*2\s*学期|学期\s*2|第?\s*二\s*学期|下学期|春学期)/.test(text)) {
+    termIndex = 2;
+  } else if (/(?:第?\s*1\s*学期|学期\s*1|第?\s*一\s*学期|上学期|秋学期)/.test(text)) {
+    termIndex = 1;
+  }
+
+  return {
+    startYear,
+    endYear,
+    termIndex
+  };
+}
+
+function normalizeSemesterLabel(label) {
+  const text = sanitizeText(label, 120).replace(/\s+/g, '');
+  const meta = parseSemesterTitle(text);
+  const termName = meta.termIndex === 1 ? '一' : (meta.termIndex === 2 ? '二' : '');
+
+  if (meta.startYear > 0 && meta.endYear > 0 && termName) {
+    return `${meta.startYear}-${meta.endYear}学年第${termName}学期`;
+  }
+
+  return text;
+}
+
+function getSemesterCanonicalKey(schoolId, semesterId, label, term) {
+  const meta = parseSemesterTitle([label, term].filter(Boolean).join(' '));
+  const normalizedSchoolId = sanitizeText(schoolId, 80) || DEFAULT_SCHOOL_ID;
+
+  if (meta.startYear > 0 && meta.endYear > 0 && meta.termIndex > 0) {
+    return `${normalizedSchoolId}_${meta.startYear}-${meta.endYear}-${meta.termIndex}`;
+  }
+
+  return getTermWeekConfigId(normalizedSchoolId, semesterId);
+}
+
 function parseDateText(value) {
   const text = String(value || '').trim();
   const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -134,9 +202,63 @@ function addDays(date, days) {
 }
 
 function isCollectionMissingError(error) {
+  const code = String(error && (error.code || error.errCode || '') || '');
   const message = String(error && (error.message || error.errMsg) || '');
 
-  return /collection|集合/i.test(message) && /not exist|不存在|not found/i.test(message);
+  return code === 'DB_TABLE_COLLECTION_NOT_EXIST' ||
+    code === 'DATABASE_COLLECTION_NOT_EXIST' ||
+    code === '-502005' ||
+    /DB_TABLE_COLLECTION_NOT_EXIST|ResourceNotFound/i.test(message) ||
+    /collection|table|db|集合|数据表/i.test(message) && /not exist|not exists|不存在|not found/i.test(message);
+}
+
+function isCollectionExistsError(error) {
+  const code = String(error && (error.code || error.errCode || '') || '');
+  const message = String(error && (error.message || error.errMsg) || '');
+
+  return code === 'DATABASE_COLLECTION_ALREADY_EXISTS' ||
+    code === '-5010' ||
+    code === 'RESOURCE_UNAVAILABLE' ||
+    /resourceunavailable/i.test(message) && /table exist|already exist|already exists/i.test(message) ||
+    /already exists|already exist|已存在/i.test(message);
+}
+
+async function ensureCollectionExists(collectionName) {
+  if (ensuredCollections.has(collectionName)) {
+    return;
+  }
+
+  const db = getDatabase();
+
+  if (typeof db.createCollection !== 'function') {
+    return;
+  }
+
+  try {
+    await db.createCollection(collectionName);
+  } catch (error) {
+    if (!isCollectionExistsError(error)) {
+      throw error;
+    }
+  }
+
+  ensuredCollections.add(collectionName);
+}
+
+async function setCollectionDocument(collectionName, docId, data) {
+  await ensureCollectionExists(collectionName);
+
+  try {
+    await getDatabase().collection(collectionName).doc(docId).set({ data });
+  } catch (error) {
+    if (!isCollectionMissingError(error)) {
+      throw error;
+    }
+
+    ensuredCollections.delete(collectionName);
+    await ensureCollectionExists(collectionName);
+    await getDatabase().collection(collectionName).doc(docId).set({ data });
+  }
 }
 
 function getTermWeekConfigId(schoolId, semesterId) {
@@ -213,6 +335,21 @@ async function readTermWeekConfig(schoolId, semesterId) {
   } catch (error) {
     if (isNotFoundError(error) || isCollectionMissingError(error)) {
       return null;
+    }
+
+    throw error;
+  }
+}
+
+async function removeTermWeekConfig(schoolId, semesterId) {
+  try {
+    await getDatabase()
+      .collection(TERM_WEEK_CONFIG_COLLECTION)
+      .doc(getTermWeekConfigId(schoolId, semesterId))
+      .remove();
+  } catch (error) {
+    if (isNotFoundError(error) || isCollectionMissingError(error)) {
+      return;
     }
 
     throw error;
@@ -342,11 +479,11 @@ function formatTermWeekConfig(config) {
     schoolName: config.schoolName || '',
     semesterId: config.semesterId || '',
     term: config.term || '',
-    weekNumber: Number(config.weekNumber) || 1,
+    weekNumber: Number(config.weekNumber) || 0,
     weekMondayDate: config.weekMondayDate || '',
     termStartDate: config.termStartDate || '',
     source: config.source || '',
-    sourceText: config.source === 'admin' ? '管理员配置' : '用户聚合',
+    sourceText: config.source === 'admin-shell' ? '待配置' : '管理员配置',
     lockedAt: config.lockedAt || '',
     lockedText: formatDateTimeText(config.lockedAt),
     updatedBy: maskOpenId(config.updatedBy || '')
@@ -386,7 +523,43 @@ async function saveTermWeekConfig(input, source, updatedBy) {
     updatedAt: db.serverDate()
   };
 
-  await db.collection(TERM_WEEK_CONFIG_COLLECTION).doc(id).set({ data });
+  await setCollectionDocument(TERM_WEEK_CONFIG_COLLECTION, id, data);
+
+  return data;
+}
+
+async function ensureTermWeekConfigShell(input) {
+  const normalizedSchoolId = sanitizeText(input && input.schoolId, 80) || DEFAULT_SCHOOL_ID;
+  const normalizedSemesterId = sanitizeText(input && input.semesterId, 80);
+  const normalizedTerm = sanitizeText(input && input.term, 80) || sanitizeText(input && input.label, 120);
+
+  if (!normalizedSemesterId) {
+    return null;
+  }
+
+  const existing = await readTermWeekConfig(normalizedSchoolId, normalizedSemesterId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const school = getSchoolOrThrow(normalizedSchoolId);
+  const id = getTermWeekConfigId(normalizedSchoolId, normalizedSemesterId);
+  const data = {
+    schoolId: normalizedSchoolId,
+    schoolName: school.name,
+    semesterId: normalizedSemesterId,
+    term: normalizedTerm,
+    weekNumber: 0,
+    weekMondayDate: '',
+    termStartDate: '',
+    source: 'admin-shell',
+    lockedAt: '',
+    updatedBy: '',
+    updatedAt: getDatabase().serverDate()
+  };
+
+  await setCollectionDocument(TERM_WEEK_CONFIG_COLLECTION, id, data);
 
   return data;
 }
@@ -438,41 +611,64 @@ function formatTermWeekAdminItem(config, reports, sourceConfig, schoolName = '')
     config: formattedConfig,
     progress,
     report: reports.length > 0 ? formatTermWeekReport(reports[0]) : null,
-    canSubmitReport: !effectiveConfig,
+    canSubmitReport: false,
     updatedText: formatDateTimeText(effectiveConfig && effectiveConfig.lockedAt || (reports[0] && reports[0].updatedAt))
   };
 }
 
-function addAdminSemesterOption(optionMap, schoolId, schoolName, semesterId, label, term = '') {
+function formatAdminSemesterOptionLabel(label, semesterId) {
+  const normalizedLabel = normalizeSemesterLabel(sanitizeText(label, 120) || sanitizeText(semesterId, 80));
+  const normalizedSemesterId = sanitizeText(semesterId, 80);
+
+  return normalizedLabel === normalizedSemesterId ? normalizedSemesterId : `${normalizedLabel} (${normalizedSemesterId})`;
+}
+
+function addAdminSemesterOption(optionMap, schoolId, schoolName, semesterId, label, term = '', options = {}) {
   const normalizedSchoolId = sanitizeText(schoolId, 80) || DEFAULT_SCHOOL_ID;
   const normalizedSemesterId = sanitizeText(semesterId, 80);
-  const normalizedLabel = sanitizeText(label, 120) || sanitizeText(term, 120) || normalizedSemesterId;
+  const normalizedLabel = normalizeSemesterLabel(sanitizeText(label, 120) || sanitizeText(term, 120) || normalizedSemesterId);
   const school = getSchool(normalizedSchoolId);
+  const isSelected = Boolean(options.selected);
 
   if (!normalizedSemesterId) {
     return;
   }
 
-  const key = getTermWeekConfigId(normalizedSchoolId, normalizedSemesterId);
-
-  if (optionMap.has(key)) {
-    const existing = optionMap.get(key);
-
-    if (!existing.term && term) {
-      existing.term = sanitizeText(term, 80);
-    }
-
+  if (!isAllowedSemesterOption(normalizedSemesterId, normalizedLabel, term)) {
     return;
   }
 
-  optionMap.set(key, {
+  const existingBySemesterId = [...optionMap.values()].find((item) => (
+    item &&
+    item.schoolId === normalizedSchoolId &&
+    item.semesterId === normalizedSemesterId
+  )) || null;
+  const shouldUseLabel = Boolean(options.preferLabel) || !existingBySemesterId || !existingBySemesterId.label || existingBySemesterId.label === existingBySemesterId.semesterId;
+  const nextOption = existingBySemesterId || {
     schoolId: normalizedSchoolId,
     schoolName: sanitizeText(schoolName, 80) || (school && school.name) || normalizedSchoolId,
     id: normalizedSemesterId,
     semesterId: normalizedSemesterId,
-    label: normalizedLabel === normalizedSemesterId ? normalizedSemesterId : `${normalizedLabel} (${normalizedSemesterId})`,
-    term: sanitizeText(term, 80) || normalizedLabel
-  });
+    label: formatAdminSemesterOptionLabel(normalizedLabel, normalizedSemesterId),
+    term: sanitizeText(term, 80) || normalizedLabel,
+    selected: isSelected
+  };
+
+  nextOption.id = normalizedSemesterId;
+  nextOption.semesterId = normalizedSemesterId;
+  nextOption.schoolId = normalizedSchoolId;
+  nextOption.schoolName = sanitizeText(schoolName, 80) || nextOption.schoolName || (school && school.name) || normalizedSchoolId;
+  nextOption.selected = Boolean(nextOption.selected || isSelected);
+
+  if (shouldUseLabel) {
+    nextOption.label = formatAdminSemesterOptionLabel(normalizedLabel, normalizedSemesterId);
+  }
+
+  if (term && (Boolean(options.preferLabel) || !nextOption.term)) {
+    nextOption.term = sanitizeText(term, 80);
+  }
+
+  optionMap.set(getTermWeekConfigId(normalizedSchoolId, normalizedSemesterId), nextOption);
 }
 
 function collectScheduleSemesterOptions(optionMap, binding, schedule) {
@@ -490,7 +686,8 @@ function collectScheduleSemesterOptions(optionMap, binding, schedule) {
       schoolName,
       semester && semester.id,
       semester && (semester.label || semester.title),
-      semester && (semester.term || semester.label || semester.title)
+      semester && (semester.term || semester.label || semester.title),
+      { selected: semester && semester.selected, preferLabel: true }
     );
   });
 
@@ -500,7 +697,8 @@ function collectScheduleSemesterOptions(optionMap, binding, schedule) {
     schoolName,
     schedule.selectedSemesterId,
     schedule.term,
-    schedule.term
+    schedule.term,
+    { selected: true }
   );
 }
 
@@ -526,6 +724,69 @@ function buildAdminSemesterOptionMap(bindings, configs, reports) {
   return optionMap;
 }
 
+function getConfigFromMap(configMap, schoolId, semesterId) {
+  return configMap.get(getTermWeekConfigId(schoolId, semesterId)) || null;
+}
+
+function buildTermWeekSchoolGroups(schools, semesterOptions, configMap) {
+  return (Array.isArray(schools) ? schools : []).map((school) => {
+    const schoolSemesters = new Map();
+
+    (Array.isArray(semesterOptions) ? semesterOptions : [])
+      .filter((semester) => semester.schoolId === school.id)
+      .forEach((semester) => {
+        const config = getConfigFromMap(configMap, school.id, semester.semesterId);
+        const key = getTermWeekConfigId(school.id, semester.semesterId);
+        const existing = schoolSemesters.get(key);
+        const nextSemester = {
+          schoolId: school.id,
+          schoolName: school.name,
+          semesterId: semester.semesterId,
+          term: semester.term || semester.label || semester.semesterId,
+          label: semester.label || semester.term || semester.semesterId,
+          weekMondayDate: config && config.weekMondayDate || '',
+          termStartDate: config && config.termStartDate || '',
+          weekNumber: config && Number(config.weekNumber) || 1,
+          config: formatTermWeekConfig(config),
+          updatedText: config ? formatDateTimeText(config.lockedAt || config.updatedAt) : ''
+        };
+
+        if (!existing || (config && !existing.config)) {
+          schoolSemesters.set(key, nextSemester);
+          return;
+        }
+
+        if (semester.selected) {
+          existing.semesterId = semester.semesterId;
+        }
+
+        if (config) {
+          existing.weekMondayDate = nextSemester.weekMondayDate;
+          existing.termStartDate = nextSemester.termStartDate;
+          existing.weekNumber = nextSemester.weekNumber;
+          existing.config = nextSemester.config;
+          existing.updatedText = nextSemester.updatedText;
+        }
+
+        if (!existing.label || existing.label === existing.semesterId) {
+          existing.label = nextSemester.label;
+        }
+
+        if (!existing.term) {
+          existing.term = nextSemester.term;
+        }
+      });
+
+    const semesters = [...schoolSemesters.values()];
+
+    return {
+      schoolId: school.id,
+      schoolName: school.name,
+      semesters
+    };
+  }).filter((group) => group.semesters.length > 0);
+}
+
 function sortAdminSemesterOptions(optionMap) {
   return [...optionMap.values()].sort((left, right) => {
     if (left.schoolName !== right.schoolName) {
@@ -534,6 +795,41 @@ function sortAdminSemesterOptions(optionMap) {
 
     return String(right.semesterId || '').localeCompare(String(left.semesterId || ''));
   });
+}
+
+function dedupeAdminSemesterOptions(options, configMap = new Map()) {
+  const deduped = new Map();
+
+  (Array.isArray(options) ? options : []).forEach((option) => {
+    const idKey = getTermWeekConfigId(option.schoolId, option.semesterId);
+    const existing = deduped.get(idKey);
+    const config = getConfigFromMap(configMap, option.schoolId, option.semesterId);
+    const nextOption = {
+      ...option,
+      label: option.label && option.label.includes('(')
+        ? option.label
+        : normalizeSemesterLabel(option.label || option.term || option.semesterId)
+    };
+
+    if (
+      !existing ||
+      (nextOption.selected && !existing.selected) ||
+      (config && !getConfigFromMap(configMap, existing.schoolId, existing.semesterId))
+    ) {
+      deduped.set(idKey, nextOption);
+      return;
+    }
+
+    if (!existing.term && nextOption.term) {
+      existing.term = nextOption.term;
+    }
+
+    if (!existing.label || existing.label === existing.semesterId) {
+      existing.label = nextOption.label;
+    }
+  });
+
+  return deduped;
 }
 
 async function collectRemoteSemesterOptions(optionMap, bindings) {
@@ -574,7 +870,8 @@ async function collectRemoteSemesterOptions(optionMap, bindings) {
             binding.schoolName,
             semester && semester.id,
             semester && (semester.label || semester.title),
-            semester && (semester.term || semester.label || semester.title)
+            semester && (semester.term || semester.label || semester.title),
+            { selected: semester && semester.selected }
           );
         });
 
@@ -590,34 +887,15 @@ async function collectRemoteSemesterOptions(optionMap, bindings) {
 
 async function buildAdminSemesterOptions(bindings, configs, reports) {
   const optionMap = buildAdminSemesterOptionMap(bindings, configs, reports);
+  const configMap = new Map();
+
+  (Array.isArray(configs) ? configs : []).forEach((config) => {
+    configMap.set(getTermWeekConfigId(config.schoolId, config.semesterId), config);
+  });
 
   await collectRemoteSemesterOptions(optionMap, bindings);
 
-  return sortAdminSemesterOptions(optionMap);
-}
-
-async function ensureTermWeekConfigFromReports(input, reports, source = 'user_aggregate', updatedBy = '') {
-  const existing = await readTermWeekConfig(input.schoolId, input.semesterId);
-
-  if (existing) {
-    return existing;
-  }
-
-  const progress = buildTermWeekProgress(reports);
-
-  if (!progress.ready || !progress.winner) {
-    return null;
-  }
-
-  const term = getPreferredTermLabel(reports, input.term);
-
-  return saveTermWeekConfig({
-    ...input,
-    term,
-    weekNumber: Number(progress.winner.weekNumber) || 1,
-    weekMondayDate: progress.winner.weekMondayDate,
-    termStartDate: progress.winner.termStartDate
-  }, source, updatedBy);
+  return sortAdminSemesterOptions(dedupeAdminSemesterOptions([...optionMap.values()], configMap));
 }
 
 async function getTermWeekConfig(event = {}) {
@@ -629,14 +907,9 @@ async function getTermWeekConfig(event = {}) {
   }
 
   const lookup = normalizeTermWeekLookup(event, binding);
-  let config = await readTermWeekConfig(lookup.schoolId, lookup.semesterId);
-  const report = await readTermWeekReport(lookup.schoolId, lookup.semesterId, openid);
+  const config = await readTermWeekConfig(lookup.schoolId, lookup.semesterId);
   const reports = await getTermWeekReports(lookup.schoolId, lookup.semesterId);
   const progress = buildTermWeekProgress(reports);
-
-  if (!config) {
-    config = await ensureTermWeekConfigFromReports(lookup, reports);
-  }
 
   return {
     success: true,
@@ -648,89 +921,26 @@ async function getTermWeekConfig(event = {}) {
       semesterId: lookup.semesterId,
       term: lookup.term || getPreferredTermLabel(reports, ''),
       config: formatTermWeekConfig(config),
-      report: formatTermWeekReport(report),
+      report: null,
       progress,
-      canSubmitReport: !config,
+      canSubmitReport: false,
       loadedAt: new Date().toISOString()
     }
   };
 }
 
 async function submitTermWeekReport(event = {}) {
-  const openid = getOpenId();
-  const binding = await readBinding(openid);
-
-  if (!isBoundBinding(binding)) {
-    throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
-  }
-
-  const lookup = normalizeTermWeekLookup(event, binding);
-  const existingConfig = await readTermWeekConfig(lookup.schoolId, lookup.semesterId);
-
-  if (existingConfig) {
-    throw new PublicError('当前学期已配置起始周，无需再次上报', 'TERM_WEEK_LOCKED');
-  }
-
-  const input = normalizeTermWeekInput({
-    ...lookup,
-    weekNumber: event.weekNumber,
-    weekMondayDate: event.weekMondayDate
-  });
-  const db = getDatabase();
-  const now = new Date().toISOString();
-  const existingReport = await readTermWeekReport(input.schoolId, input.semesterId, openid);
-  const firstReportedAt = existingReport && existingReport.firstReportedAt || now;
-
-  await db.collection(TERM_WEEK_REPORT_COLLECTION).doc(getTermWeekReportId(input.schoolId, input.semesterId, openid)).set({
-    data: {
-      _openid: openid,
-      openid,
-      schoolId: input.schoolId,
-      schoolName: input.schoolName,
-      semesterId: input.semesterId,
-      term: input.term || lookup.term || '',
-      weekNumber: input.weekNumber,
-      weekMondayDate: input.weekMondayDate,
-      termStartDate: input.termStartDate,
-      firstReportedAt,
-      updatedAt: db.serverDate()
-    }
-  });
-
-  const reports = await getTermWeekReports(input.schoolId, input.semesterId);
-  const progress = buildTermWeekProgress(reports);
-  const config = await ensureTermWeekConfigFromReports(input, reports);
-
-  return {
-    success: true,
-    data: {
-      school: {
-        id: input.schoolId,
-        name: input.schoolName
-      },
-      semesterId: input.semesterId,
-      term: input.term || lookup.term || '',
-      report: formatTermWeekReport({
-        schoolId: input.schoolId,
-        semesterId: input.semesterId,
-        term: input.term || lookup.term || '',
-        weekNumber: input.weekNumber,
-        weekMondayDate: input.weekMondayDate,
-        termStartDate: input.termStartDate,
-        firstReportedAt,
-        updatedAt: now
-      }),
-      config: formatTermWeekConfig(config),
-      progress,
-      canSubmitReport: !config,
-      loadedAt: now
-    }
-  };
+  throw new PublicError('学期起始周仅支持管理员在后台配置', 'USER_REPORT_DISABLED');
 }
 
 async function adminSaveTermWeekConfig(event = {}) {
   const updatedBy = assertAdmin();
-  const input = normalizeTermWeekInput(event);
+  const input = normalizeTermWeekInput({
+    ...event,
+    schoolId: event.schoolId,
+    semesterId: event.semesterId,
+    term: event.term
+  });
   const config = await saveTermWeekConfig(input, 'admin', updatedBy);
 
   return {
@@ -786,15 +996,45 @@ async function adminListTermWeekConfigs(event = {}) {
     scheduleCaches: true,
     lastFetchedAt: true
   }, 'lastFetchedAt', 200);
-  const configMap = new Map();
   const reportGroups = groupTermWeekReports(reports);
   const semesterOptions = await buildAdminSemesterOptions(bindings, configs, reports);
+  const ensuredConfigs = [...configs];
 
-  configs.forEach((config) => {
+  for (const semester of semesterOptions) {
+    if (!semester || !semester.schoolId || !semester.semesterId) {
+      continue;
+    }
+
+    const exists = ensuredConfigs.find((config) => (
+      config &&
+      config.schoolId === semester.schoolId &&
+      config.semesterId === semester.semesterId
+    ));
+
+    if (exists) {
+      continue;
+    }
+
+    const shell = await ensureTermWeekConfigShell({
+      schoolId: semester.schoolId,
+      semesterId: semester.semesterId,
+      term: semester.term || semester.label,
+      label: semester.label
+    });
+
+    if (shell) {
+      ensuredConfigs.push(shell);
+    }
+  }
+
+  const configMap = new Map();
+  ensuredConfigs.forEach((config) => {
     const key = getTermWeekConfigId(config.schoolId, config.semesterId);
     configMap.set(key, config);
   });
 
+  const schools = listSchools();
+  const schoolGroups = buildTermWeekSchoolGroups(schools, semesterOptions, configMap);
   const groupedKeys = new Set([...configMap.keys(), ...reportGroups.keys()]);
   const items = [...groupedKeys]
     .filter((key) => {
@@ -833,8 +1073,9 @@ async function adminListTermWeekConfigs(event = {}) {
   return {
     success: true,
     data: {
-      schools: listSchools(),
+      schools,
       semesterOptions,
+      schoolGroups,
       items,
       summary: {
         configCount: configs.length,
@@ -943,7 +1184,10 @@ function isCacheFresh(value, now = Date.now()) {
 
 function hasScheduleCache(schedule, exams) {
   return schedule &&
-    Array.isArray(schedule.courses) &&
+    (
+      Array.isArray(schedule.courses) ||
+      Array.isArray(schedule.semesterCourses)
+    ) &&
     Array.isArray(exams);
 }
 
@@ -989,6 +1233,45 @@ function getScheduleCacheKey(semesterId) {
   return value || 'current';
 }
 
+function getSemesterIndexFromText(value) {
+  const text = String(value || '').replace(/\s+/g, '');
+
+  if (/(?:第?2学期|学期2|第二学期|下学期|春学期)/.test(text)) {
+    return 2;
+  }
+
+  if (/(?:第?1学期|学期1|第一学期|上学期|秋学期)/.test(text)) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function getDateInChina(date = new Date()) {
+  const text = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+
+  return parseDateText(text) || new Date(date);
+}
+
+function getCurrentSemesterTermIndexByDate(date = new Date()) {
+  const month = getDateInChina(date).getMonth() + 1;
+
+  return month >= 9 || month <= 1 ? 1 : 2;
+}
+
+function getCurrentSemesterStartYearByDate(date = new Date()) {
+  const currentDate = getDateInChina(date);
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth() + 1;
+
+  return month >= 9 ? year : year - 1;
+}
+
 function getScheduleSemesterId(schedule, fallbackSemesterId) {
   return getScheduleCacheKey(fallbackSemesterId || schedule && schedule.selectedSemesterId);
 }
@@ -1001,6 +1284,104 @@ function normalizeScheduleCaches(value) {
   return { ...value };
 }
 
+function getCacheSemesterCandidates(binding) {
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (semester, extra = {}) => {
+    if (!semester) {
+      return;
+    }
+
+    const semesterId = sanitizeText(semester.id || semester.semesterId, 80);
+    const label = sanitizeText(semester.label || semester.title || semester.term, 120);
+
+    if (!semesterId && !label) {
+      return;
+    }
+
+    const key = `${semesterId}::${label}`;
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    candidates.push({
+      semesterId,
+      label,
+      selected: Boolean(semester.selected || extra.selected),
+      source: extra.source || ''
+    });
+  };
+
+  const lastSchedule = binding && binding.lastSchedule || {};
+
+  (Array.isArray(lastSchedule.semesters) ? lastSchedule.semesters : []).forEach((semester) => {
+    pushCandidate(semester, { source: 'lastSchedule' });
+  });
+
+  pushCandidate({
+    id: lastSchedule.selectedSemesterId,
+    label: lastSchedule.term,
+    selected: true
+  }, { source: 'lastScheduleSelected', selected: true });
+
+  Object.values(normalizeScheduleCaches(binding && binding.scheduleCaches)).forEach((entry) => {
+    const schedule = entry && entry.schedule || {};
+
+    (Array.isArray(schedule.semesters) ? schedule.semesters : []).forEach((semester) => {
+      pushCandidate(semester, { source: 'scheduleCache' });
+    });
+
+    pushCandidate({
+      id: schedule.selectedSemesterId,
+      label: schedule.term,
+      selected: true
+    }, { source: 'scheduleCacheSelected', selected: true });
+  });
+
+  return candidates;
+}
+
+async function resolveCurrentSemesterId(binding) {
+  const schoolId = getSchoolIdFromBinding(binding);
+  const candidates = getCacheSemesterCandidates(binding);
+  const configs = await getLatestDocuments(TERM_WEEK_CONFIG_COLLECTION, {
+    schoolId: true,
+    semesterId: true,
+    term: true,
+    termStartDate: true
+  }, 'lockedAt', 200);
+  const today = getDateInChina();
+  const matchedConfig = configs
+    .filter((config) => config && config.schoolId === schoolId && config.termStartDate)
+    .map((config) => ({
+      ...config,
+      parsedDate: parseDateText(config.termStartDate)
+    }))
+    .filter((config) => config.parsedDate && config.parsedDate.getTime() <= today.getTime())
+    .sort((left, right) => right.parsedDate.getTime() - left.parsedDate.getTime())[0] || null;
+
+  if (matchedConfig && matchedConfig.semesterId) {
+    return matchedConfig.semesterId;
+  }
+
+  const targetStartYear = getCurrentSemesterStartYearByDate(today);
+  const targetTermIndex = getCurrentSemesterTermIndexByDate(today);
+  const inferredCandidate = candidates.find((candidate) => {
+    const startYear = getSemesterStartYear([candidate.label, candidate.semesterId].filter(Boolean).join(' '));
+    const termIndex = getSemesterIndexFromText([candidate.label, candidate.semesterId].filter(Boolean).join(' '));
+
+    return startYear === targetStartYear && termIndex === targetTermIndex;
+  });
+
+  if (inferredCandidate && inferredCandidate.semesterId) {
+    return inferredCandidate.semesterId;
+  }
+
+  return sanitizeText(binding && binding.lastSchedule && binding.lastSchedule.selectedSemesterId, 80);
+}
+
 function createScheduleCacheEntry(schedule, exams, fetchedAt) {
   return {
     schedule,
@@ -1008,6 +1389,116 @@ function createScheduleCacheEntry(schedule, exams, fetchedAt) {
     cacheVersion: CACHE_SCHEMA_VERSION,
     fetchedAt
   };
+}
+
+function splitSemesterCourseGroups(schedule) {
+  const source = schedule || {};
+  const semesters = Array.isArray(source.semesters) ? source.semesters : [];
+  const groups = Array.isArray(source.semesterCourses)
+    ? source.semesterCourses
+    : (
+      Array.isArray(source.courses) &&
+      source.courses.every((item) => item && typeof item === 'object' && Array.isArray(item.courses))
+        ? source.courses
+        : []
+    );
+
+  if (groups.length > 0) {
+    return groups.map((group, index) => {
+      const semester = semesters[index] || {};
+
+      return {
+        semesterId: sanitizeText(group && group.semesterId, 80) || sanitizeText(semester && semester.id, 80),
+        term: sanitizeText(group && group.term, 120) || sanitizeText(semester && (semester.label || semester.title), 120),
+        label: sanitizeText(group && group.label, 120) || sanitizeText(semester && (semester.label || semester.title), 120),
+        courses: Array.isArray(group && group.courses) ? group.courses : []
+      };
+    }).filter((group) => group.semesterId);
+  }
+
+  const semesterId = sanitizeText(source.selectedSemesterId, 80);
+
+  if (!semesterId) {
+    return [];
+  }
+
+  return [{
+    semesterId,
+    term: sanitizeText(source.term, 120),
+    label: sanitizeText(source.term, 120),
+    courses: Array.isArray(source.courses) ? source.courses : []
+  }];
+}
+
+function getCoursesForSemester(schedule, semesterId = '') {
+  const source = schedule || {};
+  const groups = splitSemesterCourseGroups(schedule);
+  const normalizedSemesterId = sanitizeText(semesterId || schedule && schedule.selectedSemesterId, 80);
+
+  if (!normalizedSemesterId) {
+    return Array.isArray(source.courses) && source.courses.every((item) => !Array.isArray(item && item.courses))
+      ? source.courses
+      : [];
+  }
+
+  const matched = groups.find((group) => group.semesterId === normalizedSemesterId);
+
+  if (matched) {
+    return matched.courses;
+  }
+
+  const semesters = Array.isArray(schedule && schedule.semesters) ? schedule.semesters : [];
+  const semesterIndex = semesters.findIndex((semester) => sanitizeText(semester && semester.id, 80) === normalizedSemesterId);
+
+  if (semesterIndex >= 0 && groups[semesterIndex] && Array.isArray(groups[semesterIndex].courses)) {
+    return groups[semesterIndex].courses;
+  }
+
+  return Array.isArray(source.courses) && source.courses.every((item) => !Array.isArray(item && item.courses))
+    ? source.courses
+    : [];
+}
+
+function withSelectedSemesterCourses(schedule, semesterId = '') {
+  const source = schedule || {};
+  const selectedSemesterId = sanitizeText(semesterId || source.selectedSemesterId, 80);
+
+  return {
+    ...source,
+    selectedSemesterId,
+    courses: getCoursesForSemester(source, selectedSemesterId)
+  };
+}
+
+function normalizeScheduleForStorage(schedule) {
+  const source = schedule || {};
+  const semesterCourses = splitSemesterCourseGroups(source);
+
+  return {
+    ...source,
+    courses: semesterCourses,
+    semesterCourses
+  };
+}
+
+function buildScheduleEntryFromLastSchedule(binding, semesterId) {
+  const lastSchedule = binding && binding.lastSchedule;
+  const normalizedSemesterId = sanitizeText(semesterId, 80);
+
+  if (!lastSchedule || !normalizedSemesterId) {
+    return null;
+  }
+
+  const courses = getCoursesForSemester(lastSchedule, normalizedSemesterId);
+
+  if (!Array.isArray(courses) || courses.length === 0) {
+    return null;
+  }
+
+  return createScheduleCacheEntry({
+    ...withSelectedSemesterCourses(lastSchedule, normalizedSemesterId),
+    selectedSemesterId: normalizedSemesterId
+  }, binding && binding.lastExams || [], binding && binding.lastFetchedAt || '');
 }
 
 function mergeScheduleCaches(existingCaches, schedule, exams, fetchedAt, semesterId) {
@@ -1025,10 +1516,16 @@ function mergeScheduleCaches(existingCaches, schedule, exams, fetchedAt, semeste
 }
 
 function getCachedSemesterSchedule(binding, semesterId) {
+  const lastScheduleEntry = buildScheduleEntryFromLastSchedule(binding, semesterId);
+
+  if (lastScheduleEntry) {
+    return lastScheduleEntry;
+  }
+
   const caches = normalizeScheduleCaches(binding && binding.scheduleCaches);
   const entry = caches[getScheduleCacheKey(semesterId)];
 
-  if (!entry || !hasScheduleCache(entry.schedule, entry.exams) || !hasCurrentCacheSchema(entry) || !isCacheFresh(entry.fetchedAt)) {
+  if (!entry || !hasScheduleCache(entry.schedule, entry.exams) || !hasCurrentCacheSchema(entry)) {
     return null;
   }
 
@@ -1102,9 +1599,10 @@ async function saveBinding(openid, school, studentId, password, schedule, profil
   const existing = await readBinding(openid);
   const schoolMeta = toPublicSchool(school);
   const sameSchool = !existing || getSchoolIdFromBinding(existing) === schoolMeta.id;
+  const storageSchedule = normalizeScheduleForStorage(schedule);
   const scheduleCaches = mergeScheduleCaches(
     sameSchool && existing && existing.scheduleCaches,
-    schedule,
+    storageSchedule,
     exams,
     now
   );
@@ -1117,7 +1615,7 @@ async function saveBinding(openid, school, studentId, password, schedule, profil
       studentId,
       passwordCipher: encryptPassword(password),
       profile,
-      lastSchedule: schedule,
+      lastSchedule: storageSchedule,
       lastExams: exams,
       lastGrades: grades ? withCacheVersion(grades) : sameSchool && existing && existing.lastGrades || null,
       lastFetchedAt: now,
@@ -1136,9 +1634,10 @@ async function updateScheduleCache(openid, schedule, exams = [], options = {}) {
   const fetchedAt = options.fetchedAt || new Date().toISOString();
   const semesterId = String(options.semesterId || '').trim();
   const school = getSchoolMetaFromBinding(binding);
+  const storageSchedule = normalizeScheduleForStorage(schedule);
   const scheduleCaches = mergeScheduleCaches(
     binding && binding.scheduleCaches,
-    schedule,
+    storageSchedule,
     exams,
     fetchedAt,
     semesterId
@@ -1152,7 +1651,7 @@ async function updateScheduleCache(openid, schedule, exams = [], options = {}) {
   };
 
   if (!semesterId) {
-    data.lastSchedule = _.set(schedule);
+    data.lastSchedule = _.set(storageSchedule);
     data.lastExams = _.set(exams);
     data.lastFetchedAt = fetchedAt;
   }
@@ -1178,16 +1677,17 @@ async function updateUnifiedCache(openid, binding, snapshot) {
   const _ = db.command;
   const fetchedAt = snapshot.fetchedAt || new Date().toISOString();
   const school = getSchoolMetaFromBinding(binding);
+  const storageSchedule = normalizeScheduleForStorage(snapshot.schedule);
   const scheduleCaches = mergeScheduleCaches(
     binding && binding.scheduleCaches,
-    snapshot.schedule,
+    storageSchedule,
     snapshot.exams,
     fetchedAt
   );
   const data = {
     schoolId: school.id,
     schoolName: school.name,
-    lastSchedule: _.set(snapshot.schedule),
+    lastSchedule: _.set(storageSchedule),
     lastExams: _.set(snapshot.exams),
     lastGrades: _.set(withCacheVersion(snapshot.grades)),
     lastFetchedAt: fetchedAt,
@@ -1258,6 +1758,39 @@ async function refreshSemesterScheduleCache(openid, binding, semesterId) {
   };
 }
 
+async function refreshBoundSchedule(openid, binding, semesterId = '') {
+  if (semesterId) {
+    const refreshed = await refreshSemesterScheduleCache(openid, binding, semesterId);
+
+    return {
+      ...refreshed,
+      selectedSemesterId: semesterId
+    };
+  }
+
+  const fetched = await fetchScheduleByCredentials(
+    binding.studentId,
+    decryptPassword(binding.passwordCipher),
+    {
+      includeExams: true,
+      schoolId: getSchoolIdFromBinding(binding)
+    }
+  );
+  const fetchedAt = new Date().toISOString();
+
+  await updateScheduleCache(openid, fetched.schedule, fetched.exams, {
+    binding,
+    fetchedAt
+  });
+
+  return {
+    schedule: fetched.schedule,
+    exams: fetched.exams,
+    fetchedAt,
+    selectedSemesterId: sanitizeText(fetched.schedule && fetched.schedule.selectedSemesterId, 80)
+  };
+}
+
 function pickEditableProfileFields(profile) {
   const input = profile || {};
   const fields = [
@@ -1315,13 +1848,20 @@ async function saveProfile(openid, profile) {
 }
 
 function withScheduleMeta(schedule, binding, exams = [], fetchedAt) {
+  const selectedSchedule = withSelectedSemesterCourses(schedule, schedule && schedule.selectedSemesterId);
+  const termWeekConfig = selectedSchedule && selectedSchedule.termWeekConfig || null;
+  const termStartDate = selectedSchedule && selectedSchedule.termStartDate || termWeekConfig && termWeekConfig.termStartDate || '';
+
   return {
-    ...schedule,
+    ...selectedSchedule,
     exams,
     cacheVersion: CACHE_SCHEMA_VERSION,
     studentId: maskStudentId(binding.studentId),
     school: getSchoolMetaFromBinding(binding),
-    lastFetchedAt: fetchedAt || binding.lastFetchedAt || new Date().toISOString()
+    lastFetchedAt: fetchedAt || binding.lastFetchedAt || new Date().toISOString(),
+    termWeek: schedule && schedule.termWeek || null,
+    termWeekConfig,
+    termStartDate
   };
 }
 
@@ -1360,50 +1900,61 @@ async function getBoundSchedule(event = {}) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
-  const semesterId = String(event.semesterId || '').trim();
-  const forceRefresh = Boolean(event.force);
-  let activeBinding = binding;
+  const requestedSemesterId = String(event.semesterId || '').trim();
 
-  if (forceRefresh || !isUnifiedCacheReady(binding)) {
-    const refreshed = await refreshUnifiedCache(openid, binding);
+  if (requestedSemesterId) {
+    const cached = getCachedSemesterSchedule(binding, requestedSemesterId);
 
-    if (!semesterId) {
-      return {
-        success: true,
-        data: withScheduleMeta(refreshed.schedule, binding, refreshed.exams, refreshed.fetchedAt)
-      };
+    if (!cached) {
+      throw new PublicError('该学期尚未缓存，请先更新数据库', 'SEMESTER_NOT_CACHED');
     }
-
-    activeBinding = {
-      ...binding,
-      lastSchedule: refreshed.schedule,
-      lastExams: refreshed.exams,
-      lastGrades: refreshed.grades,
-      lastFetchedAt: refreshed.fetchedAt,
-      scheduleCaches: mergeScheduleCaches(
-        binding.scheduleCaches,
-        refreshed.schedule,
-        refreshed.exams,
-        refreshed.fetchedAt
-      ),
-      cacheVersion: CACHE_SCHEMA_VERSION
-    };
-  }
-
-  if (semesterId) {
-    const cached = forceRefresh ? null : getCachedSemesterSchedule(activeBinding, semesterId);
-    const data = cached || await refreshSemesterScheduleCache(openid, activeBinding, semesterId);
 
     return {
       success: true,
-      data: withScheduleMeta(data.schedule, activeBinding, data.exams, data.fetchedAt)
+      data: withScheduleMeta({
+        ...withSelectedSemesterCourses(cached.schedule, requestedSemesterId),
+        selectedSemesterId: requestedSemesterId
+      }, binding, cached.exams, cached.fetchedAt)
     };
   }
 
-  return {
-    success: true,
-    data: withScheduleMeta(activeBinding.lastSchedule, activeBinding, activeBinding.lastExams, activeBinding.lastFetchedAt)
-  };
+  const resolvedSemesterId = await resolveCurrentSemesterId(binding);
+
+  if (resolvedSemesterId) {
+    const cached = getCachedSemesterSchedule(binding, resolvedSemesterId);
+
+    if (cached) {
+      return {
+        success: true,
+        data: withScheduleMeta({
+          ...withSelectedSemesterCourses(cached.schedule, resolvedSemesterId),
+          selectedSemesterId: resolvedSemesterId
+        }, binding, cached.exams, cached.fetchedAt)
+      };
+    }
+  }
+
+  if (hasScheduleCache(binding.lastSchedule, binding.lastExams)) {
+    return {
+      success: true,
+      data: withScheduleMeta(binding.lastSchedule, binding, binding.lastExams, binding.lastFetchedAt)
+    };
+  }
+
+  if (resolvedSemesterId) {
+    const cached = getCachedSemesterSchedule(binding, resolvedSemesterId);
+    if (cached) {
+      return {
+        success: true,
+        data: withScheduleMeta({
+          ...withSelectedSemesterCourses(cached.schedule, resolvedSemesterId),
+          selectedSemesterId: resolvedSemesterId
+        }, binding, cached.exams, cached.fetchedAt)
+      };
+    }
+  }
+
+  throw new PublicError('当前暂无已缓存课表，请先更新数据库', 'NO_CACHED_SCHEDULE');
 }
 
 async function getBindingStatus() {
@@ -1437,6 +1988,7 @@ async function getBoundProfile() {
       profile: binding.profile || createDefaultProfileForBinding(binding),
       studentId: maskStudentId(binding.studentId),
       school: getSchoolMetaFromBinding(binding),
+      lastFetchedAt: binding.lastFetchedAt || '',
       isAdmin: isAdminOpenId(openid)
     }
   };
@@ -1450,19 +2002,14 @@ async function getBoundGrades(event = {}) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
-  if (!event.force && isUnifiedCacheReady(binding)) {
+  if (hasGradesCache(binding.lastGrades)) {
     return {
       success: true,
       data: withCacheVersion(binding.lastGrades)
     };
   }
 
-  const refreshed = await refreshUnifiedCache(openid, binding);
-
-  return {
-    success: true,
-    data: withCacheVersion(refreshed.grades)
-  };
+  throw new PublicError('当前暂无已缓存成绩，请先更新数据库', 'NO_CACHED_GRADES');
 }
 
 async function saveBoundProfile(event) {
@@ -1499,6 +2046,26 @@ async function refreshAllCaches() {
       school: getSchoolMetaFromBinding(binding),
       refreshedAt: refreshed.fetchedAt
     }
+  };
+}
+
+async function refreshScheduleCache(event = {}) {
+  const openid = getOpenId();
+  const binding = await readBinding(openid);
+
+  if (!isBoundBinding(binding)) {
+    throw new PublicError('璇峰厛缁戝畾鏁欏姟绯荤粺璐﹀彿', 'NO_BINDING');
+  }
+
+  const requestedSemesterId = sanitizeText(event.semesterId, 80);
+  const refreshed = await refreshBoundSchedule(openid, binding, requestedSemesterId);
+
+  return {
+    success: true,
+    data: withScheduleMeta({
+      ...refreshed.schedule,
+      selectedSemesterId: refreshed.selectedSemesterId || requestedSemesterId || refreshed.schedule.selectedSemesterId
+    }, binding, refreshed.exams, refreshed.fetchedAt)
   };
 }
 
@@ -1576,12 +2143,22 @@ function getArrayLength(value) {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function getScheduleCourseCount(schedule) {
+  const groups = splitSemesterCourseGroups(schedule);
+
+  if (groups.length > 0) {
+    return groups.reduce((total, group) => total + getArrayLength(group.courses), 0);
+  }
+
+  return getArrayLength(schedule && schedule.courses);
+}
+
 function formatBindingUser(binding) {
   const profile = binding.profile || {};
   const schedule = binding.lastSchedule || {};
   const grades = binding.lastGrades || {};
   const studentId = binding.studentId || profile.studentId || profile.maskedStudentId || '';
-  const courseCount = getArrayLength(schedule.courses);
+  const courseCount = getScheduleCourseCount(schedule);
   const examCount = getArrayLength(binding.lastExams);
   const semesterCount = getArrayLength(grades.semesters);
   const majorText = [profile.major, profile.className]
@@ -1836,6 +2413,10 @@ exports.main = async (event) => {
 
     if (action === 'saveProfile') {
       return await saveBoundProfile(input);
+    }
+
+    if (action === 'refresh') {
+      return await refreshScheduleCache(input);
     }
 
     if (action === 'refreshAll') {

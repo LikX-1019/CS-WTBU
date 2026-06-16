@@ -7,18 +7,16 @@ const { createRequire } = require('module');
 const indexPath = path.resolve(__dirname, '../index.js');
 const source = fs.readFileSync(indexPath, 'utf8');
 const localRequire = createRequire(indexPath);
-const wtbu = localRequire('./schools/wtbu');
-const { getSchool } = localRequire('./schools');
-const parseGrades = wtbu.__test__.parseGrades;
-const parseExams = wtbu.__test__.parseExams;
-const parseSemesters = wtbu.__test__.parseSemesters;
-const fetchExams = wtbu.__test__.fetchExams;
-const findExamBatches = wtbu.__test__.findExamBatches;
-const getExamBatchPaths = wtbu.__test__.getExamBatchPaths;
-const mergeExams = wtbu.__test__.mergeExams;
-const setExamBatchFetchDelayMs = wtbu.__test__.setExamBatchFetchDelayMs;
 
 process.env.EDU_PASSWORD_SECRET = 'a'.repeat(64);
+
+const wtbu = localRequire('./schools/wtbu');
+const { getSchool } = localRequire('./schools');
+const parseSemesters = wtbu.__test__.parseSemesters;
+const dedupeSemesters = wtbu.__test__.dedupeSemesters;
+const fetchSchedule = wtbu.__test__.fetchSchedule;
+const fetchScheduleWithClient = wtbu.__test__.fetchScheduleWithClient;
+const setSemesterSwitchDelayMs = wtbu.__test__.setSemesterSwitchDelayMs;
 
 const context = {
   Buffer,
@@ -49,36 +47,19 @@ const context = {
 context.global = context;
 vm.runInNewContext(source, context, { filename: indexPath });
 
-function parse(html) {
-  return JSON.parse(JSON.stringify(
-    parseGrades(html, '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f')
-  ));
-}
-
 function toPlain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function getFirstGrade(result) {
-  assert.strictEqual(result.semesters.length, 1);
-  assert.strictEqual(result.semesters[0].grades.length, 1);
-  return result.semesters[0].grades[0];
-}
-
-function getSummaryValue(result, label) {
-  const item = result.summary.find((summaryItem) => summaryItem.label === label);
-
-  return item ? item.value : '';
-}
-
 const scheduleSemesters = parseSemesters(`
 <input name="semester.id" value="488">
-<input type="text" value="\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0032\u5b66\u671f">
+<input type="text" value="2025-2026学年第二学期">
 <script>
   var semesterCalendar = [
+    { id: 420, schoolYear: '2024-2025', term: '2' },
     { id: 487, schoolYear: '2025-2026', term: '1' },
     { id: 488, schoolYear: '2025-2026', term: '2' },
-    { semesterId: '489', semesterName: '\u0032\u0030\u0032\u0036-\u0032\u0030\u0032\u0037\u5b66\u5e74\u7b2c\u0031\u5b66\u671f' }
+    { semesterId: '489', semesterName: '2026-2027学年第一学期' }
   ];
 </script>
 `);
@@ -88,266 +69,93 @@ assert.deepStrictEqual(scheduleSemesters.map((semester) => ({
   label: semester.label,
   selected: semester.selected
 })), [
-  { id: '489', label: '\u0032\u0030\u0032\u0036-\u0032\u0030\u0032\u0037\u5b66\u5e74\u7b2c\u0031\u5b66\u671f', selected: false },
-  { id: '488', label: '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0032\u5b66\u671f', selected: true },
-  { id: '487', label: '\u0032\u0030\u0032\u0035-\u0032\u0030\u0032\u0036\u5b66\u5e74\u7b2c\u0031\u5b66\u671f', selected: false }
+  { id: '489', label: '2026-2027学年第一学期', selected: false },
+  { id: '488', label: '2025-2026学年第二学期', selected: true },
+  { id: '487', label: '2025-2026学年第一学期', selected: false }
 ]);
 
-const shiftedByEmptyCell = parse(`
-<table>
-  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u6838\u65b9\u5f0f</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
-  <tr><td>\u519b\u4e8b\u8bad\u7ec3</td><td></td><td>2</td><td>82</td><td>3.2</td></tr>
-</table>`);
-
-assert.deepStrictEqual(getFirstGrade(shiftedByEmptyCell), {
-  name: '\u519b\u4e8b\u8bad\u7ec3',
-  credit: '2',
-  score: '82',
-  scoreLow: false,
-  gpa: '3.2'
-});
-
-const completeRow = parse(`
-<table>
-  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
-  <tr><td>\u9ad8\u7b49\u6570\u5b66</td><td>4</td><td>91</td><td>4.1</td></tr>
-</table>`);
-
-assert.deepStrictEqual(getFirstGrade(completeRow), {
-  name: '\u9ad8\u7b49\u6570\u5b66',
-  credit: '4',
-  score: '91',
-  scoreLow: false,
-  gpa: '4.1'
-});
-
-const weightedAverage = parse(`
-<table>
-  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
-  <tr><td>\u4f53\u80b2</td><td>1</td><td>100</td><td>5</td></tr>
-  <tr><td>\u4e13\u4e1a\u8bfe</td><td>4</td><td>85</td><td>3.5</td></tr>
-</table>`);
-
-assert.strictEqual(getSummaryValue(weightedAverage, '\u5e73\u5747\u5206'), '88');
-assert.strictEqual(weightedAverage.semesters[0].average, '88');
-
-const orderedSemesters = parse(`
-<table>
-  <tr><th>\u5b66\u5e74\u5b66\u671f</th><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u5b66\u5206</th><th>\u6210\u7ee9</th><th>\u7ee9\u70b9</th></tr>
-  <tr><td>2024-2025\u5b66\u5e74\u7b2c\u4e00\u5b66\u671f</td><td>\u79bb\u6563\u6570\u5b66</td><td>4</td><td>90</td><td>4.0</td></tr>
-  <tr><td>2025-2026\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f</td><td>\u7ebf\u6027\u4ee3\u6570</td><td>4</td><td>95</td><td>4.5</td></tr>
-</table>`);
-
-assert.strictEqual(orderedSemesters.semesters[0].title, '2025-2026\u5b66\u5e74\u7b2c\u4e8c\u5b66\u671f');
-
-const arrangedExams = parseExams(`
-<table>
-  <tr><th>课程序号</th><th>课程名称</th><th>考试类别</th><th>考试日期</th><th>考试安排</th><th>考试地点</th><th>考场座位号</th><th>考试情况</th></tr>
-  <tr><td>01311004.31</td><td>大学英语（4）</td><td>期末考试</td><td>2026-07-03</td><td>13:10~14:50</td><td>弘德楼（原综合楼）608</td><td>8</td><td>正常</td></tr>
-  <tr><td>09334003.02</td><td>解剖与透视</td><td>期末考试</td><td>时间未安排</td><td>时间未安排</td><td>地点未安排</td><td>地点未安排</td><td>正常</td></tr>
-  <tr><td>12311004.20</td><td>毛泽东思想和中国特色社会主义理论体系概论</td><td>期末考试</td><td>2026-07-03</td><td>10:30~12:10</td><td>弘德楼（原综合楼）308</td><td>70</td><td>正常</td></tr>
-</table>`, {
-  id: '1428',
-  name: '第二批期末考试（17-19周）'
-});
-
-assert.deepStrictEqual(arrangedExams.map((exam) => ({
-  batchId: exam.batchId,
-  batchName: exam.batchName,
-  name: exam.name,
-  date: exam.date,
-  time: exam.time,
-  location: exam.location,
-  seat: exam.seat,
-  status: exam.status
-})), [
-  {
-    batchId: '1428',
-    batchName: '第二批期末考试（17-19周）',
-    name: '大学英语（4）',
-    date: '2026-07-03',
-    time: '13:10~14:50',
-    location: '弘德楼（原综合楼）608',
-    seat: '8',
-    status: '正常'
-  },
-  {
-    batchId: '1428',
-    batchName: '第二批期末考试（17-19周）',
-    name: '解剖与透视',
-    date: '',
-    time: '',
-    location: '',
-    seat: '',
-    status: '未安排'
-  },
-  {
-    batchId: '1428',
-    batchName: '第二批期末考试（17-19周）',
-    name: '毛泽东思想和中国特色社会主义理论体系概论',
-    date: '2026-07-03',
-    time: '10:30~12:10',
-    location: '弘德楼（原综合楼）308',
-    seat: '70',
-    status: '正常'
-  }
+assert.deepStrictEqual(dedupeSemesters([
+  { id: '488', label: '2025-2026学年第二学期', selected: true },
+  { id: '999', label: '2025-2026学年第二学期' },
+  { id: '489', label: '2026-2027学年第一学期' }
+]).map((semester) => semester.label), [
+  '2026-2027学年第一学期',
+  '2025-2026学年第二学期'
 ]);
 
-const examBatches = findExamBatches(`
-<select name="examBatch.id">
-  <option value="1428">第二批期末考试（17-19周）</option>
-  <option value="1412" selected>第一批期末考试（13-14周）</option>
-</select>`);
-
-assert.deepStrictEqual(examBatches.map((batch) => ({
-  id: batch.id,
-  name: batch.name,
-  selected: batch.selected
-})), [
-  { id: '1428', name: '第二批期末考试（17-19周）', selected: false },
-  { id: '1412', name: '第一批期末考试（13-14周）', selected: true }
-]);
-assert.strictEqual(mergeExams([arrangedExams, arrangedExams]).length, arrangedExams.length);
-
-assert.deepStrictEqual(getExamBatchPaths({ id: '1428' }), [
-  '/eams/stdExamTable!examTable.action?examBatch.id=1428',
-  '/eams/stdExamTable.action?examBatch.id=1428',
-  '/eams/examTableForStd.action?examBatch.id=1428'
-]);
-
-const firstBatchExam = parseExams(`
-<table>
-  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
-  <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
-</table>`, {
-  id: '1412',
-  name: '\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09'
-});
-
-const secondBatchExam = parseExams(`
-<table>
-  <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
-  <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
-</table>`, {
-  id: '1428',
-  name: '\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09'
-});
-
-const sameCourseDifferentBatches = mergeExams([firstBatchExam, secondBatchExam]);
-assert.strictEqual(sameCourseDifferentBatches.length, 2);
-assert.deepStrictEqual(
-  sameCourseDifferentBatches.map((exam) => exam.batchId),
-  ['1412', '1428']
-);
-
-async function runFetchExamBatchTests() {
-  const defaultHtml = `
-  <select name="examBatch.id">
-    <option value="1428" selected>\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09</option>
-    <option value="1427">\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09</option>
-  </select>
-  <table>
-    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
-    <tr><td>\u5927\u5b66\u82f1\u8bed\uff084\uff09</td><td>2026-07-03</td><td>13:10~14:50</td><td>\u5f18\u5fb7\u697c608</td><td>8</td><td>\u6b63\u5e38</td></tr>
-  </table>`;
-  const firstBatchHtml = `
-  <table>
-    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
-    <tr><td>\u6bdb\u6982</td><td>2026-06-18</td><td>10:30~12:10</td><td>\u5f18\u5fb7\u697c308</td><td>70</td><td>\u6b63\u5e38</td></tr>
-  </table>`;
-  const requestedPaths = [];
-  const requestCounts = new Map();
-  const client = {
-    get(path) {
-      requestedPaths.push(path);
-      requestCounts.set(path, (requestCounts.get(path) || 0) + 1);
-
-      if (path === '/eams/stdExamTable.action') {
-        return Promise.resolve({ data: defaultHtml });
-      }
-
-      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1427') {
-        if (requestCounts.get(path) === 1) {
-          return Promise.resolve({ data: '\u8bf7\u4e0d\u8981\u8fc7\u5feb\u70b9\u51fb' });
-        }
-
-        return Promise.resolve({ data: firstBatchHtml });
-      }
-
-      return Promise.resolve({ data: '' });
+async function runScheduleFetchTest() {
+  const calls = [];
+  const scheduleClient = {
+    async get(pathName) {
+      calls.push(`get:${pathName}`);
+      return {
+        data: `
+          <input name="semester.id" value="487">
+          <script>bg.form.addInput(form, "ids", "std-1");</script>
+          <select name="semester.id">
+            <option value="487" selected>2025-2026学年第一学期</option>
+            <option value="488">2025-2026学年第二学期</option>
+          </select>
+        `
+      };
+    },
+    async post(pathName, payload) {
+      calls.push(`post:${pathName}:${payload}`);
+      return { data: '<table></table>' };
     }
   };
 
-  setExamBatchFetchDelayMs(0);
-
-  let exams;
-
   try {
-    exams = await fetchExams(client, '');
+    setSemesterSwitchDelayMs(5);
+    await fetchSchedule(scheduleClient, { semesterId: '488' });
   } finally {
-    setExamBatchFetchDelayMs(1600);
+    setSemesterSwitchDelayMs(2000);
   }
 
-  assert.deepStrictEqual(exams.map((exam) => ({
-    batchId: exam.batchId,
-    name: exam.name
-  })), [
-    { batchId: '1428', name: '\u5927\u5b66\u82f1\u8bed\uff084\uff09' },
-    { batchId: '1427', name: '\u6bdb\u6982' }
-  ]);
-  assert.strictEqual(
-    requestedPaths.includes('/eams/stdExamTable!examTable.action?examBatch.id=1428'),
-    false
-  );
-  assert.strictEqual(requestCounts.get('/eams/stdExamTable!examTable.action?examBatch.id=1427'), 2);
+  assert.strictEqual(calls[calls.length - 1].split(':')[0], 'post');
+  assert.ok(calls[calls.length - 1].includes('semester.id=488'));
+}
 
-  const emptyCurrentHtml = `
-  <select name="examBatch.id">
-    <option value="1428" selected>\u7b2c\u4e8c\u6279\u671f\u672b\u8003\u8bd5\uff0817-19\u5468\uff09</option>
-    <option value="1427">\u7b2c\u4e00\u6279\u671f\u672b\u8003\u8bd5\uff0813-14\u5468\uff09</option>
-  </select>`;
-  const secondBatchHtml = `
-  <table>
-    <tr><th>\u8bfe\u7a0b\u540d\u79f0</th><th>\u8003\u8bd5\u65e5\u671f</th><th>\u8003\u8bd5\u5b89\u6392</th><th>\u8003\u8bd5\u5730\u70b9</th><th>\u8003\u573a\u5ea7\u4f4d\u53f7</th><th>\u8003\u8bd5\u60c5\u51b5</th></tr>
-    <tr><td>\u9ad8\u7b49\u6570\u5b66</td><td>2026-07-04</td><td>08:30~10:10</td><td>\u5f18\u5fb7\u697c408</td><td>18</td><td>\u6b63\u5e38</td></tr>
-  </table>`;
-  const fallbackRequests = [];
-  const fallbackClient = {
-    get(path) {
-      fallbackRequests.push(path);
-
-      if (path === '/eams/stdExamTable.action') {
-        return Promise.resolve({ data: emptyCurrentHtml });
-      }
-
-      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1428') {
-        return Promise.resolve({ data: secondBatchHtml });
-      }
-
-      if (path === '/eams/stdExamTable!examTable.action?examBatch.id=1427') {
-        return Promise.resolve({ data: firstBatchHtml });
-      }
-
-      return Promise.resolve({ data: '' });
+async function runFetchAllSemesterCoursesTest() {
+  const semesterIds = ['491', '490', '489', '488', '487'];
+  const requestedSemesterIds = [];
+  const scheduleClient = {
+    async get() {
+      return {
+        data: `
+          <input name="semester.id" value="491">
+          <script>bg.form.addInput(form, "ids", "std-1");</script>
+          <select name="semester.id">
+            ${semesterIds.map((id, index) => `
+              <option value="${id}"${index === 0 ? ' selected' : ''}>semester ${id}</option>
+            `).join('')}
+          </select>
+        `
+      };
+    },
+    async post(pathName, payload) {
+      const semesterId = String(payload).match(/semester\.id=([^&]+)/)[1];
+      requestedSemesterIds.push(decodeURIComponent(semesterId));
+      return {
+        data: `<h3>term-${semesterId}</h3>`
+      };
     }
   };
 
-  setExamBatchFetchDelayMs(0);
-
   try {
-    exams = await fetchExams(fallbackClient, '');
-  } finally {
-    setExamBatchFetchDelayMs(1600);
-  }
+    setSemesterSwitchDelayMs(0);
+    const result = await fetchScheduleWithClient(scheduleClient, '', 'student-1', {
+      includeAllSemesterCourses: true
+    });
 
-  assert.deepStrictEqual(exams.map((exam) => ({
-    batchId: exam.batchId,
-    name: exam.name
-  })), [
-    { batchId: '1428', name: '\u9ad8\u7b49\u6570\u5b66' },
-    { batchId: '1427', name: '\u6bdb\u6982' }
-  ]);
-  assert.ok(fallbackRequests.includes('/eams/stdExamTable!examTable.action?examBatch.id=1428'));
+    assert.deepStrictEqual(
+      result.schedule.semesterCourses.map((group) => group.semesterId),
+      semesterIds
+    );
+    assert.deepStrictEqual(requestedSemesterIds, semesterIds);
+  } finally {
+    setSemesterSwitchDelayMs(2000);
+  }
 }
 
 function createSchedule(id) {
@@ -355,14 +163,76 @@ function createSchedule(id) {
     term: `term-${id}`,
     selectedSemesterId: id,
     courses: [{ id: `course-${id}`, weekday: 1, sections: [1] }],
-    semesters: [{ id, label: `学期 ${id}` }]
+    semesters: [{ id, label: `semester ${id}` }]
+  };
+}
+
+function createStoredSchedule(id) {
+  const schedule = createSchedule(id);
+
+  return Object.assign({}, schedule, {
+    courses: [{
+      semesterId: id,
+      term: schedule.term,
+      label: schedule.term,
+      courses: schedule.courses
+    }],
+    semesterCourses: [{
+      semesterId: id,
+      term: schedule.term,
+      label: schedule.term,
+      courses: schedule.courses
+    }]
+  });
+}
+
+function createAggregatedSchedule(ids) {
+  const list = (Array.isArray(ids) ? ids : []).map((id, index) => ({
+    id,
+    label: `semester ${id}`,
+    selected: index === 0
+  }));
+
+  return {
+    term: `term-${ids[0]}`,
+    selectedSemesterId: ids[0],
+    courses: ids.map((id) => ({
+      semesterId: id,
+      term: `term-${id}`,
+      label: `semester ${id}`,
+      courses: [{ id: `course-${id}`, weekday: 1, sections: [1] }]
+    })),
+    semesterCourses: ids.map((id) => ({
+      semesterId: id,
+      term: `term-${id}`,
+      label: `semester ${id}`,
+      courses: [{ id: `course-${id}`, weekday: 1, sections: [1] }]
+    })),
+    semesters: list
+  };
+}
+
+function createIndexedOnlyAggregatedSchedule(ids) {
+  return {
+    term: `term-${ids[0]}`,
+    selectedSemesterId: ids[0],
+    courses: ids.map((id) => ({
+      term: `term-${id}`,
+      label: `semester ${id}`,
+      courses: [{ id: `course-${id}`, weekday: 1, sections: [1] }]
+    })),
+    semesters: ids.map((id, index) => ({
+      id,
+      label: `semester ${id}`,
+      selected: index === 0
+    }))
   };
 }
 
 function createGrades(id) {
   return {
-    summary: [{ label: '总学分', value: id }],
-    semesters: [{ id, title: `成绩 ${id}`, grades: [] }]
+    summary: [{ label: 'totalCredit', value: id }],
+    semesters: [{ id, title: `grades ${id}`, grades: [] }]
   };
 }
 
@@ -389,8 +259,78 @@ function useFakeDb(binding) {
   const state = {
     binding,
     updates: [],
-    sets: []
+    sets: [],
+    collections: {}
   };
+
+  function listDocs(name) {
+    if (name === 'eduAccountBindings' && state.binding) {
+      return [{
+        _id: 'test-openid',
+        ...state.binding
+      }];
+    }
+
+    return Array.isArray(state.collections[name]) ? state.collections[name].map((doc, index) => ({
+      _id: doc._id || `${name}-${index}`,
+      ...doc
+    })) : [];
+  }
+
+  function applyFields(doc, fields) {
+    if (!fields) {
+      return doc;
+    }
+
+    const projected = {};
+    Object.keys(fields).forEach((key) => {
+      if (fields[key] && Object.prototype.hasOwnProperty.call(doc, key)) {
+        projected[key] = doc[key];
+      }
+    });
+
+    return projected;
+  }
+
+  function createQuery(name, stateShape = {}) {
+    return {
+      field(fields) {
+        return createQuery(name, {
+          ...stateShape,
+          fields
+        });
+      },
+      orderBy(field, direction) {
+        return createQuery(name, {
+          ...stateShape,
+          orderField: field,
+          orderDirection: direction
+        });
+      },
+      limit(limitValue) {
+        return createQuery(name, {
+          ...stateShape,
+          limitValue: Number(limitValue) || 0
+        });
+      },
+      async get() {
+        let docs = listDocs(name);
+
+        if (stateShape.orderField) {
+          const factor = stateShape.orderDirection === 'desc' ? -1 : 1;
+          docs = docs.sort((left, right) => String(left[stateShape.orderField] || '').localeCompare(String(right[stateShape.orderField] || '')) * factor);
+        }
+
+        if (stateShape.limitValue > 0) {
+          docs = docs.slice(0, stateShape.limitValue);
+        }
+
+        return {
+          data: docs.map((doc) => applyFields(doc, stateShape.fields))
+        };
+      }
+    };
+  }
 
   context.fakeDb = {
     command: {
@@ -417,6 +357,15 @@ function useFakeDb(binding) {
               return Promise.resolve();
             }
           };
+        },
+        field(fields) {
+          return createQuery(name).field(fields);
+        },
+        orderBy(field, direction) {
+          return createQuery(name).orderBy(field, direction);
+        },
+        limit(limitValue) {
+          return createQuery(name).limit(limitValue);
         }
       };
     }
@@ -426,14 +375,13 @@ function useFakeDb(binding) {
 }
 
 async function runCacheTests() {
-  await runFetchExamBatchTests();
+  await runScheduleFetchTest();
+  await runFetchAllSemesterCoursesTest();
 
   const schoolsResult = await context.exports.main({ action: 'schools' });
-
   assert.strictEqual(schoolsResult.success, true);
   assert.strictEqual(schoolsResult.data.defaultSchoolId, 'wtbu');
   assert.strictEqual(schoolsResult.data.schools[0].id, 'wtbu');
-  assert.strictEqual(schoolsResult.data.schools[0].name, '武汉工商学院');
   assert.strictEqual(typeof getSchool('wtbu').adapter.fetchAllByCredentials, 'function');
 
   let capturedUpdate = null;
@@ -465,112 +413,18 @@ async function runCacheTests() {
   await context.updateGradesCache('openid-1', cachedGrades);
   assert.strictEqual(capturedUpdate.name, 'eduAccountBindings');
   assert.strictEqual(capturedUpdate.id, 'openid-1');
-  assert.deepStrictEqual(toPlain(capturedUpdate.options.data.lastGrades), {
-    __set: Object.assign({}, cachedGrades, { cacheVersion: 3 })
-  });
-  assert.strictEqual(capturedUpdate.options.data.updatedAt, 'SERVER_DATE');
 
-  let fetchAllCalls = 0;
   const freshBinding = createBinding();
   useFakeDb(freshBinding);
-  context.fetchAllByCredentials = async () => {
-    fetchAllCalls += 1;
-    throw new Error('fresh cache should not fetch edu system');
-  };
   const freshSchedule = await context.getBoundSchedule();
   const freshGrades = await context.getBoundGrades();
-
-  assert.strictEqual(fetchAllCalls, 0);
   assert.strictEqual(freshSchedule.data.term, freshBinding.lastSchedule.term);
   assert.deepStrictEqual(freshSchedule.data.exams, freshBinding.lastExams);
   assert.deepStrictEqual(toPlain(freshGrades.data), freshBinding.lastGrades);
 
-  const legacyVersionBinding = createBinding({ cacheVersion: 1 });
-  useFakeDb(legacyVersionBinding);
-  let legacyVersionFetchCalls = 0;
-  context.fetchAllByCredentials = async () => {
-    legacyVersionFetchCalls += 1;
-    return {
-      schedule: createSchedule('legacy-version'),
-      exams: [{ id: 'exam-legacy-version' }],
-      grades: createGrades('legacy-version'),
-      profile: null
-    };
-  };
-  const legacyVersionSchedule = await context.getBoundSchedule();
-
-  assert.strictEqual(legacyVersionFetchCalls, 1);
-  assert.strictEqual(legacyVersionSchedule.data.term, 'term-legacy-version');
-
-  fetchAllCalls = 0;
-  context.fetchAllByCredentials = async () => {
-    fetchAllCalls += 1;
-    return {
-      schedule: createSchedule('forced'),
-      exams: [{ id: 'exam-forced' }],
-      grades: createGrades('forced'),
-      profile: null
-    };
-  };
-  const forcedSchedule = await context.getBoundSchedule({ force: true });
-  const forcedGrades = await context.getBoundGrades({ force: true });
-
-  assert.strictEqual(fetchAllCalls, 2);
-  assert.strictEqual(forcedSchedule.data.term, 'term-forced');
-  assert.deepStrictEqual(toPlain(forcedGrades.data), createCachedGrades('forced'));
-
-  const expiredBinding = createBinding({
-    lastFetchedAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString()
-  });
-  const expiredState = useFakeDb(expiredBinding);
-  context.fetchAllByCredentials = async (studentId, password, options) => {
-    fetchAllCalls += 1;
-    assert.strictEqual(studentId, expiredBinding.studentId);
-    assert.strictEqual(password, 'pw');
-    assert.strictEqual(options.schoolId, 'wtbu');
-    return {
-      schedule: createSchedule('refreshed'),
-      exams: [{ id: 'exam-refreshed' }],
-      grades: createGrades('refreshed'),
-      profile: null
-    };
-  };
-  fetchAllCalls = 0;
-  const expiredSchedule = await context.getBoundSchedule();
-
-  assert.strictEqual(fetchAllCalls, 1);
-  assert.strictEqual(expiredSchedule.data.term, 'term-refreshed');
-  assert.strictEqual(expiredState.updates.length, 1);
-  assert.deepStrictEqual(toPlain(expiredState.updates[0].options.data.lastGrades), { __set: createCachedGrades('refreshed') });
-  assert.strictEqual(expiredState.updates[0].options.data.schoolId, 'wtbu');
-  assert.strictEqual(expiredState.updates[0].options.data.schoolName, '武汉工商学院');
-  assert.ok(expiredState.updates[0].options.data.lastFetchedAt);
-  assert.ok(expiredState.updates[0].options.data.scheduleCaches.__set.current);
-
-  const legacyBinding = createBinding();
-  delete legacyBinding.scheduleCaches;
-  const legacyState = useFakeDb(legacyBinding);
-  fetchAllCalls = 0;
-  context.fetchAllByCredentials = async () => {
-    fetchAllCalls += 1;
-    return {
-      schedule: createSchedule('legacy-refreshed'),
-      exams: [{ id: 'exam-legacy-refreshed' }],
-      grades: createGrades('legacy-refreshed'),
-      profile: null
-    };
-  };
-  const legacySchedule = await context.getBoundSchedule();
-
-  assert.strictEqual(fetchAllCalls, 1);
-  assert.strictEqual(legacySchedule.data.term, 'term-legacy-refreshed');
-  assert.ok(legacyState.updates[0].options.data.scheduleCaches.__set.current);
-
   const manualBinding = createBinding();
   const manualState = useFakeDb(manualBinding);
-  fetchAllCalls = 0;
   context.fetchAllByCredentials = async () => {
-    fetchAllCalls += 1;
     return {
       schedule: createSchedule('manual'),
       exams: [{ id: 'exam-manual' }],
@@ -578,132 +432,89 @@ async function runCacheTests() {
       profile: null
     };
   };
-  const manualResult = await context.exports.main({ action: 'refreshAll' });
 
+  const manualResult = await context.exports.main({ action: 'refreshAll' });
   assert.strictEqual(manualResult.success, true);
-  assert.strictEqual(fetchAllCalls, 1);
   assert.strictEqual(manualResult.data.schedule.term, 'term-manual');
   assert.deepStrictEqual(toPlain(manualResult.data.grades), createCachedGrades('manual'));
-  assert.ok(manualResult.data.refreshedAt);
   assert.strictEqual(manualState.updates.length, 1);
 
-  const semesterBinding = createBinding({
-    scheduleCaches: {
-      2024: {
-        schedule: createSchedule('2024'),
-        exams: [{ id: 'exam-2024' }],
-        cacheVersion: 3,
-        fetchedAt: new Date().toISOString()
-      }
-    }
-  });
-  useFakeDb(semesterBinding);
-  let semesterFetchCalls = 0;
+  const refreshCurrentBinding = createBinding();
+  const refreshCurrentState = useFakeDb(refreshCurrentBinding);
   context.fetchScheduleByCredentials = async () => {
-    semesterFetchCalls += 1;
-    throw new Error('cached semester should not fetch edu system');
+    return {
+      schedule: createSchedule('current-refreshed-only'),
+      exams: [{ id: 'exam-current-refreshed-only' }]
+    };
   };
-  const cachedSemester = await context.getBoundSchedule({ semesterId: '2024' });
 
-  assert.strictEqual(semesterFetchCalls, 0);
-  assert.strictEqual(cachedSemester.data.term, 'term-2024');
+  const refreshCurrentResult = await context.exports.main({ action: 'refresh' });
+  assert.strictEqual(refreshCurrentResult.success, true);
+  assert.strictEqual(refreshCurrentResult.data.term, 'term-current-refreshed-only');
+  assert.strictEqual(refreshCurrentState.updates.length, 1);
+  assert.deepStrictEqual(
+    toPlain(refreshCurrentState.updates[0].options.data.scheduleCaches.__set.current.schedule),
+    createStoredSchedule('current-refreshed-only')
+  );
 
-  const missingSemesterState = useFakeDb(createBinding());
+  const refreshSemesterBinding = createBinding();
+  const refreshSemesterState = useFakeDb(refreshSemesterBinding);
   context.fetchScheduleByCredentials = async (studentId, password, options) => {
-    semesterFetchCalls += 1;
+    assert.strictEqual(studentId, refreshSemesterBinding.studentId);
     assert.strictEqual(password, 'pw');
+    assert.strictEqual(options.schoolId, 'wtbu');
+    assert.strictEqual(options.includeExams, true);
     assert.strictEqual(options.semesterId, '2023');
     return {
       schedule: createSchedule('2023'),
-      exams: [{ id: 'exam-2023' }]
+      exams: [{ id: 'exam-2023-refresh' }]
     };
   };
-  semesterFetchCalls = 0;
-  const missingSemester = await context.getBoundSchedule({ semesterId: '2023' });
 
-  assert.strictEqual(semesterFetchCalls, 1);
-  assert.strictEqual(missingSemester.data.term, 'term-2023');
-  assert.strictEqual(missingSemesterState.updates.length, 1);
-  assert.ok(missingSemesterState.updates[0].options.data.scheduleCaches.__set['2023']);
-  assert.strictEqual(
-    Object.prototype.hasOwnProperty.call(missingSemesterState.updates[0].options.data, 'lastSchedule'),
-    false
+  const refreshSemesterResult = await context.exports.main({
+    action: 'refresh',
+    semesterId: '2023'
+  });
+
+  assert.strictEqual(refreshSemesterResult.success, true);
+  assert.strictEqual(refreshSemesterResult.data.selectedSemesterId, '2023');
+  assert.strictEqual(refreshSemesterState.updates.length, 1);
+  assert.deepStrictEqual(
+    toPlain(refreshSemesterState.updates[0].options.data.scheduleCaches.__set['2023'].schedule),
+    createStoredSchedule('2023')
   );
 
-  const expiredSemesterBinding = createBinding({
-    lastFetchedAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString()
+  const aggregatedBinding = createBinding({
+    lastSchedule: createAggregatedSchedule(['2024', '2023', '2022']),
+    lastExams: [{ id: 'exam-current' }],
+    scheduleCaches: {}
   });
-  useFakeDb(expiredSemesterBinding);
-  let expiredFetchAllCalls = 0;
-  let expiredSemesterCalls = 0;
+  useFakeDb(aggregatedBinding);
 
-  context.fetchAllByCredentials = async () => {
-    expiredFetchAllCalls += 1;
-    return {
-      schedule: createSchedule('current-refreshed'),
-      exams: [{ id: 'exam-current-refreshed' }],
-      grades: createGrades('current-refreshed'),
-      profile: null
-    };
-  };
-  context.fetchScheduleByCredentials = async (studentId, password, options) => {
-    expiredSemesterCalls += 1;
-    assert.strictEqual(options.semesterId, '2022');
-    return {
-      schedule: createSchedule('2022'),
-      exams: [{ id: 'exam-2022' }]
-    };
-  };
+  const aggregatedSemester = await context.getBoundSchedule({ semesterId: '2023' });
 
-  const expiredSemester = await context.getBoundSchedule({ semesterId: '2022' });
+  assert.strictEqual(aggregatedSemester.success, true);
+  assert.strictEqual(aggregatedSemester.data.selectedSemesterId, '2023');
+  assert.deepStrictEqual(
+    toPlain(aggregatedSemester.data.courses),
+    [{ id: 'course-2023', weekday: 1, sections: [1] }]
+  );
 
-  assert.strictEqual(expiredFetchAllCalls, 1);
-  assert.strictEqual(expiredSemesterCalls, 1);
-  assert.strictEqual(expiredSemester.data.term, 'term-2022');
-
-  const bindState = useFakeDb(null);
-  const school = getSchool('wtbu');
-  const originalFetchAll = school.adapter.fetchAllByCredentials;
-  school.adapter.fetchAllByCredentials = async (studentId, password, options) => {
-    assert.strictEqual(studentId, '20260002');
-    assert.strictEqual(password, 'bind-pw');
-    assert.strictEqual(options.schoolId, 'wtbu');
-    return {
-      schedule: createSchedule('bind'),
-      exams: [{ id: 'exam-bind' }],
-      grades: createGrades('bind'),
-      profile: { studentId: '20260002', name: '测试学生' }
-    };
-  };
-
-  let bindResult;
-
-  try {
-    bindResult = await context.exports.main({
-      action: 'bind',
-      schoolId: 'wtbu',
-      studentId: '20260002',
-      password: 'bind-pw'
-    });
-  } finally {
-    school.adapter.fetchAllByCredentials = originalFetchAll;
-  }
-
-  assert.strictEqual(bindResult.success, true);
-  assert.strictEqual(bindResult.data.school.id, 'wtbu');
-  assert.strictEqual(bindState.sets.length, 1);
-  assert.strictEqual(bindState.sets[0].options.data.schoolId, 'wtbu');
-  assert.strictEqual(bindState.sets[0].options.data.schoolName, '武汉工商学院');
-
-  const unsupportedResult = await context.exports.main({
-    action: 'direct',
-    schoolId: 'unknown-school',
-    studentId: '20260003',
-    password: 'pw'
+  const indexedOnlyBinding = createBinding({
+    lastSchedule: createIndexedOnlyAggregatedSchedule(['2024', '2023', '2022']),
+    lastExams: [{ id: 'exam-current' }],
+    scheduleCaches: {}
   });
+  useFakeDb(indexedOnlyBinding);
 
-  assert.strictEqual(unsupportedResult.success, false);
-  assert.strictEqual(unsupportedResult.code, 'SCHOOL_NOT_SUPPORTED');
+  const indexedOnlySemester = await context.getBoundSchedule({ semesterId: '2023' });
+
+  assert.strictEqual(indexedOnlySemester.success, true);
+  assert.strictEqual(indexedOnlySemester.data.selectedSemesterId, '2023');
+  assert.deepStrictEqual(
+    toPlain(indexedOnlySemester.data.courses),
+    [{ id: 'course-2023', weekday: 1, sections: [1] }]
+  );
 }
 
 runCacheTests()

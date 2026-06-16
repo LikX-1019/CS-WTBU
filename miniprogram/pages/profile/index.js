@@ -52,6 +52,7 @@ Page({
   data: Object.assign({}, getCustomNavStyle(), formatProfile(getEmptyProfile()), {
     loading: false,
     errorText: '',
+    cacheWarningText: '',
     rawProfile: getEmptyProfile(),
     editVisible: false,
     savingProfile: false,
@@ -86,7 +87,7 @@ Page({
       await ensureBound();
       const data = await loadProfile(options);
 
-      this.setProfileData(data.profile, data.isAdmin);
+      this.setProfileData(data.profile, data.isAdmin, data.lastFetchedAt);
     } catch (error) {
       if (error.code === 'NO_BINDING') {
         redirectToLogin();
@@ -101,14 +102,19 @@ Page({
     }
   },
 
-  setProfileData(profile, isAdmin) {
+  setProfileData(profile, isAdmin, lastFetchedAt = '') {
     const rawProfile = Object.assign({}, getEmptyProfile(), profile || {});
     const adminVisible = Boolean(isAdmin);
+    const fetchedTime = new Date(lastFetchedAt || '').getTime();
+    const cacheWarningText = Number.isFinite(fetchedTime) && fetchedTime > 0 && Date.now() - fetchedTime > 48 * 60 * 60 * 1000
+      ? '数据库课表数据已超过48小时，建议更新数据库。'
+      : '';
 
     this.setData(Object.assign({}, formatProfile(rawProfile), {
       rawProfile,
       isAdmin: adminVisible,
-      actions: buildActions(adminVisible)
+      actions: buildActions(adminVisible),
+      cacheWarningText
     }));
   },
 
@@ -154,7 +160,7 @@ Page({
 
     wx.showModal({
       title: '更新数据库',
-      content: '将从教务系统重新获取课表、考试和成绩，并重置12小时缓存时间。',
+      content: '将从教务系统重新获取课表、考试和成绩，并重置48小时缓存时间。',
       confirmText: '更新',
       confirmColor: '#2f7bff',
       success: (result) => {

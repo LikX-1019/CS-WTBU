@@ -1,5 +1,5 @@
 const { ensureBound } = require('./utils/auth');
-const { loadGrades, loadSchedule } = require('./utils/dataStore');
+const { loadCurrentSchedule, loadGrades } = require('./utils/dataStore');
 
 App({
   onLaunch() {
@@ -18,7 +18,7 @@ App({
     });
 
     ensureBound()
-      .then(() => loadSchedule())
+      .then(() => loadCurrentSchedule())
       .then(() => loadGrades())
       .catch(() => {});
   }
