@@ -158,6 +158,57 @@ async function runFetchAllSemesterCoursesTest() {
   }
 }
 
+async function runFetchAllKeepsCurrentExamTest() {
+  const events = [];
+  const scheduleClient = {
+    async get(pathName) {
+      events.push(`get:${pathName || ''}`);
+
+      if (String(pathName || '').toLowerCase().includes('exam')) {
+        return {
+          data: '<table></table>'
+        };
+      }
+
+      return {
+        data: `
+          <input name="semester.id" value="491">
+          <script>bg.form.addInput(form, "ids", "std-1");</script>
+          <select name="semester.id">
+            <option value="491" selected>semester 491</option>
+            <option value="490">semester 490</option>
+          </select>
+          <a href="/eams/stdExamTable.action">考试安排</a>
+        `
+      };
+    },
+    async post(pathName, payload) {
+      const semesterId = String(payload).match(/semester\.id=([^&]+)/)[1];
+      events.push(`schedule:${decodeURIComponent(semesterId)}`);
+      return {
+        data: `<h3>term-${semesterId}</h3>`
+      };
+    }
+  };
+
+  try {
+    setSemesterSwitchDelayMs(0);
+    await fetchScheduleWithClient(scheduleClient, '', 'student-1', {
+      includeExams: true,
+      includeAllSemesterCourses: true
+    });
+
+    const examIndex = events.findIndex((event) => event.toLowerCase().includes('exam'));
+    const switchedIndex = events.findIndex((event) => event === 'schedule:490');
+
+    assert.ok(examIndex >= 0);
+    assert.ok(switchedIndex >= 0);
+    assert.ok(examIndex < switchedIndex);
+  } finally {
+    setSemesterSwitchDelayMs(2000);
+  }
+}
+
 function createSchedule(id) {
   return {
     term: `term-${id}`,
@@ -377,6 +428,7 @@ function useFakeDb(binding) {
 async function runCacheTests() {
   await runScheduleFetchTest();
   await runFetchAllSemesterCoursesTest();
+  await runFetchAllKeepsCurrentExamTest();
 
   const schoolsResult = await context.exports.main({ action: 'schools' });
   assert.strictEqual(schoolsResult.success, true);
@@ -421,6 +473,83 @@ async function runCacheTests() {
   assert.strictEqual(freshSchedule.data.term, freshBinding.lastSchedule.term);
   assert.deepStrictEqual(freshSchedule.data.exams, freshBinding.lastExams);
   assert.deepStrictEqual(toPlain(freshGrades.data), freshBinding.lastGrades);
+
+  const manuallyUpdatedAt = '2026-06-20T08:30:00.000Z';
+  const manuallyUpdatedBinding = createBinding({
+    lastFetchedAt: '2026-06-10T00:00:00.000Z',
+    updatedAt: '2026-06-11T00:00:00.000Z',
+    _updateTime: manuallyUpdatedAt
+  });
+  useFakeDb(manuallyUpdatedBinding);
+  const manuallyUpdatedSchedule = await context.getBoundSchedule();
+  const manuallyUpdatedProfile = await context.exports.main({ action: 'profile' });
+  assert.strictEqual(manuallyUpdatedSchedule.data.lastFetchedAt, manuallyUpdatedAt);
+  assert.strictEqual(manuallyUpdatedProfile.data.lastFetchedAt, manuallyUpdatedAt);
+
+  const invalidCipherBinding = createBinding({
+    passwordCipher: 'invalid-cipher'
+  });
+  useFakeDb(invalidCipherBinding);
+  const invalidCipherStatus = await context.exports.main({ action: 'status' });
+  const invalidCipherSchedule = await context.getBoundSchedule();
+  const invalidCipherGrades = await context.getBoundGrades();
+  const invalidCipherProfile = await context.exports.main({ action: 'profile' });
+  const invalidCipherSavedProfile = await context.exports.main({
+    action: 'saveProfile',
+    profile: {
+      phone: '13800000000'
+    }
+  });
+  const invalidCipherRefresh = await context.exports.main({ action: 'refreshAll' });
+  assert.strictEqual(invalidCipherStatus.success, true);
+  assert.strictEqual(invalidCipherStatus.data.bound, true);
+  assert.strictEqual(invalidCipherStatus.data.canRefresh, true);
+  assert.strictEqual(invalidCipherSchedule.data.term, invalidCipherBinding.lastSchedule.term);
+  assert.deepStrictEqual(toPlain(invalidCipherGrades.data), invalidCipherBinding.lastGrades);
+  assert.strictEqual(invalidCipherProfile.success, true);
+  assert.strictEqual(invalidCipherSavedProfile.success, true);
+  assert.strictEqual(invalidCipherSavedProfile.data.profile.phone, '13800000000');
+  assert.strictEqual(invalidCipherRefresh.success, false);
+  assert.strictEqual(invalidCipherRefresh.code, 'BINDING_INVALID');
+
+  const oldAccountBinding = createBinding({
+    studentId: '20260001',
+    schoolId: 'wtbu',
+    scheduleCaches: {
+      old: {
+        cacheVersion: 3,
+        schedule: createStoredSchedule('old'),
+        exams: [{ id: 'exam-old' }],
+        fetchedAt: '2026-06-01T00:00:00.000Z'
+      }
+    },
+    lastGrades: createCachedGrades('old')
+  });
+  const rebindState = useFakeDb(oldAccountBinding);
+  context.fetchAllByCredentials = async (studentId, password, options) => {
+    assert.strictEqual(studentId, '20260002');
+    assert.strictEqual(password, 'new-pw');
+    assert.strictEqual(options.schoolId, 'wtbu');
+    return {
+      schedule: createSchedule('new'),
+      exams: [{ id: 'exam-new' }],
+      grades: createGrades('new'),
+      profile: { name: 'New User' }
+    };
+  };
+
+  const rebindResult = await context.exports.main({
+    action: 'bind',
+    schoolId: 'wtbu',
+    studentId: '20260002',
+    password: 'new-pw'
+  });
+  assert.strictEqual(rebindResult.success, true);
+  assert.strictEqual(rebindState.sets.length, 1);
+  assert.strictEqual(rebindState.sets[0].options.data.studentId, '20260002');
+  assert.strictEqual(rebindState.sets[0].options.data.scheduleCaches.old, undefined);
+  assert.strictEqual(rebindState.sets[0].options.data.scheduleCaches.new.schedule.term, 'term-new');
+  assert.deepStrictEqual(toPlain(rebindState.sets[0].options.data.lastGrades), createCachedGrades('new'));
 
   const manualBinding = createBinding();
   const manualState = useFakeDb(manualBinding);

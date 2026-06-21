@@ -181,6 +181,9 @@ Page({
     try {
       await ensureBound();
       const data = await refreshEduCache();
+      if (data.refreshedAt) {
+        this.setProfileData(this.data.rawProfile, this.data.isAdmin, data.refreshedAt);
+      }
 
       wx.showToast({
         title: data.refreshedAt ? '数据库已更新' : '更新完成',

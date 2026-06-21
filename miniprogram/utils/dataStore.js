@@ -2,6 +2,7 @@ const { callGetSchedule } = require('./api');
 
 const CACHE_SCHEMA_VERSION = 3;
 const SCHEDULE_CACHE_MAP_KEY = 'scheduleDataBySemester';
+const CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 
 const store = {
   schedule: null,
@@ -55,6 +56,45 @@ function getScheduleTermWeekMeta(schedule, options = {}) {
     semesterId: String(options.semesterId || source.selectedSemesterId || '').trim(),
     term: String(options.term || source.term || '').trim()
   };
+}
+
+function getEmbeddedTermWeek(schedule) {
+  if (!schedule || typeof schedule !== 'object') {
+    return null;
+  }
+
+  if (schedule.termWeek) {
+    const normalized = normalizeTermWeekData(schedule.termWeek);
+    return normalized && normalized.config && normalized.termStartDate ? normalized : null;
+  }
+
+  if (!schedule.termWeekConfig || !schedule.termStartDate) {
+    return null;
+  }
+
+  return normalizeTermWeekData({
+    config: schedule.termWeekConfig,
+    report: schedule.termWeekReport || null,
+    progress: schedule.termWeekProgress || null,
+    canSubmitReport: Boolean(schedule.canSubmitTermWeekReport)
+  });
+}
+
+function rememberTermWeekCache(schedule, termWeek, options = {}) {
+  const normalized = normalizeTermWeekData(termWeek);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const meta = getScheduleTermWeekMeta(schedule, options);
+
+  if (meta.schoolId && meta.semesterId) {
+    store.termWeek = normalized;
+    store.termWeekCacheKey = getTermWeekCacheKey(meta.schoolId, meta.semesterId);
+  }
+
+  return normalized;
 }
 
 function applyTermWeekToSchedule(schedule, termWeek) {
@@ -113,12 +153,30 @@ async function loadTermWeekConfig(schedule, options = {}) {
 }
 
 async function loadScheduleWithTermWeek(schedule, options = {}) {
+  const embeddedTermWeek = getEmbeddedTermWeek(schedule);
+
+  if (!options.force && embeddedTermWeek) {
+    return applyTermWeekToSchedule(schedule, rememberTermWeekCache(schedule, embeddedTermWeek, options));
+  }
+
   const termWeek = await loadTermWeekConfig(schedule, options);
   return applyTermWeekToSchedule(schedule, termWeek);
 }
 
 function isCurrentCache(data) {
   return data && Number(data.cacheVersion) === CACHE_SCHEMA_VERSION;
+}
+
+function getDataFetchedTime(data) {
+  const fetchedTime = new Date(data && data.lastFetchedAt || '').getTime();
+
+  return Number.isFinite(fetchedTime) ? fetchedTime : 0;
+}
+
+function isExpiredCache(data) {
+  const fetchedTime = getDataFetchedTime(data);
+
+  return fetchedTime <= 0 || Date.now() - fetchedTime > CACHE_TTL_MS;
 }
 
 function normalizeScheduleCacheMap(data) {
@@ -309,25 +367,22 @@ async function loadSchedule(options = {}) {
   const loadingKey = `${useCurrentSemester ? 'current' : 'schedule'}::${requestedSemesterId || 'default'}::${readMode}`;
 
   if (!options.force && !options.fromDatabase) {
-    const cached = store.sessionScheduleLoaded
-      ? (
-        useCurrentSemester
-          ? getCurrentScheduleCache()
-          : (requestedSemesterId ? getSemesterScheduleCache(requestedSemesterId) : getScheduleCache())
-      )
-      : null;
+    const cached = useCurrentSemester
+      ? getCurrentScheduleCache()
+      : (requestedSemesterId ? getSemesterScheduleCache(requestedSemesterId) : getScheduleCache());
 
     if (cached && (!requestedSemesterId || requestedSemesterId === cached.selectedSemesterId)) {
-      const data = await loadScheduleWithTermWeek(cached, {
-        force: true,
-        semesterId: cached.selectedSemesterId
-      });
+      if (!isExpiredCache(cached)) {
+        const data = await loadScheduleWithTermWeek(cached, {
+          semesterId: cached.selectedSemesterId
+        });
 
-      persistSchedule(data, {
-        currentSemesterOnly: useCurrentSemester
-      });
+        persistSchedule(data, {
+          currentSemesterOnly: useCurrentSemester
+        });
 
-      return data;
+        return data;
+      }
     }
 
     if (store.loadingSchedule && store.loadingScheduleKey === loadingKey) {
@@ -403,7 +458,7 @@ async function loadProfile(options = {}) {
   if (!options.force) {
     const cached = getProfileCache();
 
-    if (cached) {
+    if (cached && !isExpiredCache(cached)) {
       store.profile = cached;
       return cached;
     }
@@ -454,6 +509,16 @@ async function refreshEduCache() {
     setGrades(data.grades);
   }
 
+  if (data.refreshedAt) {
+    const currentProfile = getProfileCache();
+
+    if (currentProfile) {
+      setProfile(Object.assign({}, currentProfile, {
+        lastFetchedAt: data.refreshedAt
+      }));
+    }
+  }
+
   return data;
 }
 
@@ -494,6 +559,26 @@ function setProfile(data) {
   }
 }
 
+function replaceBoundAccountData(data = {}, fallbackStudentId = '') {
+  clearAll();
+
+  setSchedule(data);
+  setCurrentSchedule(data);
+
+  if (data.grades) {
+    setGrades(data.grades);
+  }
+
+  if (data.profile) {
+    setProfile({
+      profile: data.profile,
+      studentId: data.studentId || fallbackStudentId,
+      isAdmin: Boolean(data.isAdmin),
+      lastFetchedAt: data.lastFetchedAt || ''
+    });
+  }
+}
+
 function clearAll() {
   store.schedule = null;
   store.currentSchedule = null;
@@ -529,6 +614,7 @@ module.exports = {
   loadProfile,
   loadSchedule,
   loadTermWeekConfig,
+  replaceBoundAccountData,
   refreshEduCache,
   saveProfile,
   setCurrentSchedule,

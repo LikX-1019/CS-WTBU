@@ -1921,6 +1921,8 @@ async function fetchScheduleWithClient(client, homeHtml, studentId, options = {}
     semesters,
     selectedSemesterId: scheduleResult.selectedSemesterId
   };
+  const exams = options.includeExams ? await fetchExams(client, homeHtml) : [];
+  const profile = options.includeProfile ? await fetchProfile(client, homeHtml, studentId) : null;
 
   if (options.includeAllSemesterCourses) {
     const groups = [];
@@ -1971,9 +1973,6 @@ async function fetchScheduleWithClient(client, homeHtml, studentId, options = {}
 
     schedule.semesterCourses = groups;
   }
-
-  const exams = options.includeExams ? await fetchExams(client, homeHtml) : [];
-  const profile = options.includeProfile ? await fetchProfile(client, homeHtml, studentId) : null;
 
   return {
     schedule,

@@ -38,7 +38,8 @@ async function ensureBound(options = {}) {
         setProfile({
           profile: data.profile,
           studentId: data.studentId || '',
-          isAdmin: Boolean(data.isAdmin)
+          isAdmin: Boolean(data.isAdmin),
+          canRefresh: data.canRefresh !== false
         });
       }
 

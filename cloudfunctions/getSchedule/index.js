@@ -1176,6 +1176,22 @@ function getCacheTimestamp(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function getLatestTimestampValue(values = []) {
+  let latestValue = '';
+  let latestTime = 0;
+
+  (Array.isArray(values) ? values : []).forEach((value) => {
+    const timestamp = getCacheTimestamp(value);
+
+    if (timestamp > latestTime) {
+      latestTime = timestamp;
+      latestValue = value;
+    }
+  });
+
+  return latestValue || '';
+}
+
 function isCacheFresh(value, now = Date.now()) {
   const timestamp = getCacheTimestamp(value);
 
@@ -1212,8 +1228,30 @@ function hasScheduleCaches(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function getBindingLatestScheduleFetchedAt(binding, fetchedAt = '') {
+  const values = [fetchedAt, binding && binding.lastFetchedAt];
+
+  Object.values(normalizeScheduleCaches(binding && binding.scheduleCaches)).forEach((entry) => {
+    values.push(entry && entry.fetchedAt);
+  });
+
+  return getLatestTimestampValue(values);
+}
+
+function getBindingEffectiveFetchedAt(binding, fetchedAt = '') {
+  return getLatestTimestampValue([
+    getBindingLatestScheduleFetchedAt(binding, fetchedAt),
+    binding && binding.updatedAt,
+    binding && binding._updateTime
+  ]);
+}
+
 function isBoundBinding(binding) {
   return Boolean(binding && binding.studentId && binding.passwordCipher);
+}
+
+function isCachedBinding(binding) {
+  return Boolean(binding && binding.studentId);
 }
 
 function isUnifiedCacheReady(binding) {
@@ -1517,19 +1555,19 @@ function mergeScheduleCaches(existingCaches, schedule, exams, fetchedAt, semeste
 
 function getCachedSemesterSchedule(binding, semesterId) {
   const lastScheduleEntry = buildScheduleEntryFromLastSchedule(binding, semesterId);
-
-  if (lastScheduleEntry) {
-    return lastScheduleEntry;
-  }
-
   const caches = normalizeScheduleCaches(binding && binding.scheduleCaches);
   const entry = caches[getScheduleCacheKey(semesterId)];
+  const validEntry = entry && hasScheduleCache(entry.schedule, entry.exams) && hasCurrentCacheSchema(entry)
+    ? entry
+    : null;
 
-  if (!entry || !hasScheduleCache(entry.schedule, entry.exams) || !hasCurrentCacheSchema(entry)) {
-    return null;
+  if (lastScheduleEntry && validEntry) {
+    return getCacheTimestamp(validEntry.fetchedAt) >= getCacheTimestamp(lastScheduleEntry.fetchedAt)
+      ? validEntry
+      : lastScheduleEntry;
   }
 
-  return entry;
+  return validEntry || lastScheduleEntry;
 }
 
 function getSchoolOrThrow(schoolId) {
@@ -1598,10 +1636,14 @@ async function saveBinding(openid, school, studentId, password, schedule, profil
   const now = new Date().toISOString();
   const existing = await readBinding(openid);
   const schoolMeta = toPublicSchool(school);
-  const sameSchool = !existing || getSchoolIdFromBinding(existing) === schoolMeta.id;
+  const sameAccount = Boolean(
+    existing &&
+    getSchoolIdFromBinding(existing) === schoolMeta.id &&
+    String(existing.studentId || '').trim() === studentId
+  );
   const storageSchedule = normalizeScheduleForStorage(schedule);
   const scheduleCaches = mergeScheduleCaches(
-    sameSchool && existing && existing.scheduleCaches,
+    sameAccount && existing && existing.scheduleCaches,
     storageSchedule,
     exams,
     now
@@ -1617,7 +1659,7 @@ async function saveBinding(openid, school, studentId, password, schedule, profil
       profile,
       lastSchedule: storageSchedule,
       lastExams: exams,
-      lastGrades: grades ? withCacheVersion(grades) : sameSchool && existing && existing.lastGrades || null,
+      lastGrades: grades ? withCacheVersion(grades) : sameAccount && existing && existing.lastGrades || null,
       lastFetchedAt: now,
       cacheVersion: CACHE_SCHEMA_VERSION,
       scheduleCaches,
@@ -1825,7 +1867,7 @@ function pickEditableProfileFields(profile) {
 async function saveProfile(openid, profile) {
   const binding = await readBinding(openid);
 
-  if (!binding || !binding.studentId || !binding.passwordCipher) {
+  if (!isCachedBinding(binding)) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
@@ -1851,6 +1893,7 @@ function withScheduleMeta(schedule, binding, exams = [], fetchedAt) {
   const selectedSchedule = withSelectedSemesterCourses(schedule, schedule && schedule.selectedSemesterId);
   const termWeekConfig = selectedSchedule && selectedSchedule.termWeekConfig || null;
   const termStartDate = selectedSchedule && selectedSchedule.termStartDate || termWeekConfig && termWeekConfig.termStartDate || '';
+  const effectiveFetchedAt = getBindingEffectiveFetchedAt(binding, fetchedAt);
 
   return {
     ...selectedSchedule,
@@ -1858,7 +1901,7 @@ function withScheduleMeta(schedule, binding, exams = [], fetchedAt) {
     cacheVersion: CACHE_SCHEMA_VERSION,
     studentId: maskStudentId(binding.studentId),
     school: getSchoolMetaFromBinding(binding),
-    lastFetchedAt: fetchedAt || binding.lastFetchedAt || new Date().toISOString(),
+    lastFetchedAt: effectiveFetchedAt || new Date().toISOString(),
     termWeek: schedule && schedule.termWeek || null,
     termWeekConfig,
     termStartDate
@@ -1896,7 +1939,7 @@ async function getBoundSchedule(event = {}) {
   const openid = getOpenId();
   const binding = await readBinding(openid);
 
-  if (!isBoundBinding(binding)) {
+  if (!isCachedBinding(binding)) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
@@ -1960,12 +2003,14 @@ async function getBoundSchedule(event = {}) {
 async function getBindingStatus() {
   const openid = getOpenId();
   const binding = await readBinding(openid);
-  const bound = Boolean(binding && binding.studentId && binding.passwordCipher);
+  const bound = isCachedBinding(binding);
+  const canRefresh = isBoundBinding(binding);
 
   return {
     success: true,
     data: {
       bound,
+      canRefresh,
       isAdmin: isAdminOpenId(openid),
       studentId: binding ? maskStudentId(binding.studentId) : '',
       school: bound ? getSchoolMetaFromBinding(binding) : null,
@@ -1978,7 +2023,7 @@ async function getBoundProfile() {
   const openid = getOpenId();
   const binding = await readBinding(openid);
 
-  if (!isBoundBinding(binding)) {
+  if (!isCachedBinding(binding)) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 
@@ -1988,7 +2033,7 @@ async function getBoundProfile() {
       profile: binding.profile || createDefaultProfileForBinding(binding),
       studentId: maskStudentId(binding.studentId),
       school: getSchoolMetaFromBinding(binding),
-      lastFetchedAt: binding.lastFetchedAt || '',
+      lastFetchedAt: getBindingEffectiveFetchedAt(binding),
       isAdmin: isAdminOpenId(openid)
     }
   };
@@ -1998,7 +2043,7 @@ async function getBoundGrades(event = {}) {
   const openid = getOpenId();
   const binding = await readBinding(openid);
 
-  if (!isBoundBinding(binding)) {
+  if (!isCachedBinding(binding)) {
     throw new PublicError('请先绑定教务系统账号', 'NO_BINDING');
   }
 

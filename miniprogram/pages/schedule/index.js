@@ -129,7 +129,7 @@ Page({
   }),
 
   onShow() {
-    this.loadSchedule(undefined, { fromDatabase: true });
+    this.loadSchedule();
   },
 
   onPullDownRefresh() {

@@ -1,6 +1,6 @@
 const { callGetSchedule, toMessage } = require('../../utils/api');
 const { markBound } = require('../../utils/auth');
-const { setCurrentSchedule, setGrades, setProfile, setSchedule } = require('../../utils/dataStore');
+const { replaceBoundAccountData } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 
 const DEFAULT_SCHOOL = {
@@ -177,19 +177,8 @@ Page({
         password
       }, '课表获取失败');
 
-      setSchedule(data);
-      setCurrentSchedule(data);
-      if (data.grades) {
-        setGrades(data.grades);
-      }
+      replaceBoundAccountData(data, studentId);
       markBound(true);
-      if (data.profile) {
-        setProfile({
-          profile: data.profile,
-          studentId: data.studentId || studentId,
-          isAdmin: Boolean(data.isAdmin)
-        });
-      }
       wx.reLaunch({
         url: '/pages/schedule/index'
       });
