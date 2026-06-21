@@ -2,7 +2,6 @@ const { callGetSchedule } = require('./api');
 
 const CACHE_SCHEMA_VERSION = 3;
 const SCHEDULE_CACHE_MAP_KEY = 'scheduleDataBySemester';
-const CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 
 const store = {
   schedule: null,
@@ -165,18 +164,6 @@ async function loadScheduleWithTermWeek(schedule, options = {}) {
 
 function isCurrentCache(data) {
   return data && Number(data.cacheVersion) === CACHE_SCHEMA_VERSION;
-}
-
-function getDataFetchedTime(data) {
-  const fetchedTime = new Date(data && data.lastFetchedAt || '').getTime();
-
-  return Number.isFinite(fetchedTime) ? fetchedTime : 0;
-}
-
-function isExpiredCache(data) {
-  const fetchedTime = getDataFetchedTime(data);
-
-  return fetchedTime <= 0 || Date.now() - fetchedTime > CACHE_TTL_MS;
 }
 
 function normalizeScheduleCacheMap(data) {
@@ -342,6 +329,15 @@ function getProfileCache() {
   }
 }
 
+function getEmptyProfileData() {
+  return {
+    profile: {},
+    studentId: '',
+    isAdmin: false,
+    lastFetchedAt: ''
+  };
+}
+
 function persistSchedule(data, options = {}) {
   if (!data) {
     return;
@@ -372,17 +368,15 @@ async function loadSchedule(options = {}) {
       : (requestedSemesterId ? getSemesterScheduleCache(requestedSemesterId) : getScheduleCache());
 
     if (cached && (!requestedSemesterId || requestedSemesterId === cached.selectedSemesterId)) {
-      if (!isExpiredCache(cached)) {
-        const data = await loadScheduleWithTermWeek(cached, {
-          semesterId: cached.selectedSemesterId
-        });
+      const data = await loadScheduleWithTermWeek(cached, {
+        semesterId: cached.selectedSemesterId
+      });
 
-        persistSchedule(data, {
-          currentSemesterOnly: useCurrentSemester
-        });
+      persistSchedule(data, {
+        currentSemesterOnly: useCurrentSemester
+      });
 
-        return data;
-      }
+      return data;
     }
 
     if (store.loadingSchedule && store.loadingScheduleKey === loadingKey) {
@@ -428,10 +422,11 @@ async function loadCurrentSchedule(options = {}) {
 
 async function loadGrades(options = {}) {
   if (!options.force) {
-    const cached = store.sessionGradesLoaded ? getGradesCache() : null;
+    const cached = getGradesCache();
 
     if (cached) {
       store.grades = cached;
+      store.sessionGradesLoaded = true;
       return cached;
     }
 
@@ -454,31 +449,15 @@ async function loadGrades(options = {}) {
   return store.loadingGrades;
 }
 
-async function loadProfile(options = {}) {
-  if (!options.force) {
-    const cached = getProfileCache();
+async function loadProfile() {
+  const cached = getProfileCache();
 
-    if (cached && !isExpiredCache(cached)) {
-      store.profile = cached;
-      return cached;
-    }
-
-    if (store.loadingProfile) {
-      return store.loadingProfile;
-    }
+  if (cached) {
+    store.profile = cached;
+    return cached;
   }
 
-  store.loadingProfile = callGetSchedule({ action: 'profile' }, '个人信息加载失败')
-    .then((data) => {
-      store.profile = data;
-      wx.setStorageSync('profileData', data);
-      return data;
-    })
-    .finally(() => {
-      store.loadingProfile = null;
-    });
-
-  return store.loadingProfile;
+  return getEmptyProfileData();
 }
 
 async function saveProfile(profile) {
@@ -507,16 +486,6 @@ async function refreshEduCache() {
 
   if (data.grades) {
     setGrades(data.grades);
-  }
-
-  if (data.refreshedAt) {
-    const currentProfile = getProfileCache();
-
-    if (currentProfile) {
-      setProfile(Object.assign({}, currentProfile, {
-        lastFetchedAt: data.refreshedAt
-      }));
-    }
   }
 
   return data;

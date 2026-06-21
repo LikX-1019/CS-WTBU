@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk');
 const crypto = require('crypto');
+const axios = require('axios');
 const { PublicError, getErrorMessage, maskStudentId } = require('./common');
 const {
   DEFAULT_SCHOOL_ID,
@@ -18,11 +19,11 @@ const TERM_WEEK_CONFIG_COLLECTION = 'termWeekConfigs';
 const TERM_WEEK_REPORT_COLLECTION = 'termWeekReports';
 const PASSWORD_SECRET_ENV = 'EDU_PASSWORD_SECRET';
 const ADMIN_OPENIDS_ENV = 'ADMIN_OPENIDS';
-const CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 const CACHE_SCHEMA_VERSION = 3;
 const TERM_WEEK_REPORT_TARGET = 10;
 const TERM_WEEK_MAX_WEEK = 20;
 const MIN_TERM_SEMESTER_START_YEAR = 2025;
+const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast';
 const ensuredCollections = new Set();
 function getOpenId() {
   const wxContext = cloud.getWXContext();
@@ -1192,12 +1193,6 @@ function getLatestTimestampValue(values = []) {
   return latestValue || '';
 }
 
-function isCacheFresh(value, now = Date.now()) {
-  const timestamp = getCacheTimestamp(value);
-
-  return timestamp > 0 && now - timestamp < CACHE_TTL_MS;
-}
-
 function hasScheduleCache(schedule, exams) {
   return schedule &&
     (
@@ -1260,8 +1255,7 @@ function isUnifiedCacheReady(binding) {
     hasScheduleCache(binding.lastSchedule, binding.lastExams) &&
     hasGradesCache(binding.lastGrades) &&
     hasScheduleCaches(binding.scheduleCaches) &&
-    hasCurrentCacheSchema(binding) &&
-    isCacheFresh(binding.lastFetchedAt)
+    hasCurrentCacheSchema(binding)
   );
 }
 
@@ -1756,21 +1750,24 @@ async function refreshUnifiedCache(openid, binding, options = {}) {
     }
   );
   const fetchedAt = new Date().toISOString();
-  const profile = options.includeProfile ? fetched.profile : binding.profile;
-
-  await updateUnifiedCache(openid, binding, {
+  const snapshot = {
     schedule: fetched.schedule,
     exams: fetched.exams,
     grades: withCacheVersion(fetched.grades),
-    profile,
     fetchedAt
-  });
+  };
+
+  if (options.includeProfile) {
+    snapshot.profile = fetched.profile;
+  }
+
+  await updateUnifiedCache(openid, binding, snapshot);
 
   return {
     schedule: fetched.schedule,
     exams: fetched.exams,
     grades: fetched.grades,
-    profile,
+    profile: options.includeProfile ? fetched.profile : binding.profile,
     fetchedAt
   };
 }
@@ -2431,6 +2428,111 @@ function getSupportedSchools() {
   };
 }
 
+function getWeatherDescription(code) {
+  const weatherCode = Number(code);
+
+  if (weatherCode === 0) {
+    return '\u6674';
+  }
+
+  if ([1, 2].includes(weatherCode)) {
+    return '\u591a\u4e91';
+  }
+
+  if (weatherCode === 3) {
+    return '\u9634';
+  }
+
+  if ([45, 48].includes(weatherCode)) {
+    return '\u96fe';
+  }
+
+  if ([51, 53, 56, 61, 66, 80].includes(weatherCode)) {
+    return '\u5c0f\u96e8';
+  }
+
+  if ([55, 57, 63, 67, 81].includes(weatherCode)) {
+    return '\u4e2d\u96e8';
+  }
+
+  if ([65, 82].includes(weatherCode)) {
+    return '\u5927\u96e8';
+  }
+
+  if ([71, 73, 75, 77, 85, 86].includes(weatherCode)) {
+    return '\u96ea';
+  }
+
+  if ([95, 96, 99].includes(weatherCode)) {
+    return '\u96f7\u96e8';
+  }
+
+  return '\u5929\u6c14';
+}
+
+function formatTemperature(value) {
+  const temperature = Number(value);
+
+  if (!Number.isFinite(temperature)) {
+    return '';
+  }
+
+  return `${Math.round(temperature)}\u00b0C`;
+}
+
+function buildWeatherData(school, current = {}) {
+  const weatherText = getWeatherDescription(current.weather_code);
+  const temperatureText = formatTemperature(current.temperature_2m);
+  const schoolName = school.weatherLocation && school.weatherLocation.name || school.name;
+  const conditionText = temperatureText ? `${weatherText} ${temperatureText}` : weatherText;
+
+  return {
+    schoolId: school.id,
+    schoolName,
+    weatherText,
+    temperature: Number.isFinite(Number(current.temperature_2m)) ? Number(current.temperature_2m) : null,
+    weatherCode: Number.isFinite(Number(current.weather_code)) ? Number(current.weather_code) : null,
+    updatedAt: current.time || new Date().toISOString(),
+    displayText: `${schoolName} \u00b7 ${conditionText}`
+  };
+}
+
+async function getSchoolWeather(event = {}) {
+  const school = getSchoolOrThrow(event.schoolId || DEFAULT_SCHOOL_ID);
+  const location = school.weatherLocation;
+
+  if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
+    throw new PublicError('\u6240\u9009\u5b66\u6821\u6682\u672a\u914d\u7f6e\u5929\u6c14\u4f4d\u7f6e', 'WEATHER_LOCATION_MISSING');
+  }
+
+  let response;
+
+  try {
+    response = await axios.get(WEATHER_API_URL, {
+      timeout: 8000,
+      params: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        current: 'temperature_2m,weather_code',
+        timezone: 'Asia/Shanghai'
+      }
+    });
+  } catch (error) {
+    throw new PublicError('\u5929\u6c14\u52a0\u8f7d\u5931\u8d25', 'WEATHER_UNAVAILABLE');
+  }
+
+  const current = response && response.data && response.data.current;
+
+  if (!current || typeof current !== 'object') {
+    throw new PublicError('\u5929\u6c14\u52a0\u8f7d\u5931\u8d25', 'WEATHER_UNAVAILABLE');
+  }
+
+  return {
+    success: true,
+    data: buildWeatherData(school, current)
+  };
+}
+
 exports.main = async (event) => {
   try {
     const input = event || {};
@@ -2442,6 +2544,10 @@ exports.main = async (event) => {
 
     if (action === 'schools') {
       return getSupportedSchools();
+    }
+
+    if (action === 'weather') {
+      return await getSchoolWeather(input);
     }
 
     if (action === 'status') {

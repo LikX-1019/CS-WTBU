@@ -197,8 +197,19 @@ async function run() {
   };
   cloudCalls.length = 0;
   const reloadedCurrent = await dataStore.loadCurrentSchedule();
-  assert.strictEqual(reloadedCurrent.term, 'spring-2025');
-  assert.strictEqual(cloudCalls.some((call) => !call.action), true);
+  assert.strictEqual(reloadedCurrent.term, 'stale-current');
+  assert.strictEqual(cloudCalls.some((call) => !call.action), false);
+
+  dataStore.clearAll();
+  storage.gradesData = {
+    cacheVersion: 3,
+    summary: [{ label: 'Cached Grade', value: '99' }],
+    semesters: []
+  };
+  cloudCalls.length = 0;
+  const cachedGrades = await dataStore.loadGrades();
+  assert.strictEqual(cachedGrades.summary[0].label, 'Cached Grade');
+  assert.strictEqual(cloudCalls.some((call) => call.action === 'grades'), false);
 
   dataStore.clearAll();
   dataStore.setProfile({
@@ -209,8 +220,8 @@ async function run() {
   });
   cloudCalls.length = 0;
   const reloadedProfile = await dataStore.loadProfile();
-  assert.strictEqual(reloadedProfile.profile.name, 'Fresh User');
-  assert.strictEqual(cloudCalls.some((call) => call.action === 'profile'), true);
+  assert.strictEqual(reloadedProfile.profile.name, 'Old User');
+  assert.strictEqual(cloudCalls.some((call) => call.action === 'profile'), false);
 
   dataStore.setProfile({
     profile: { name: 'Profile Cache' },
@@ -220,7 +231,9 @@ async function run() {
   });
   cloudCalls.length = 0;
   await dataStore.refreshEduCache();
-  assert.strictEqual(storage.profileData.lastFetchedAt, freshFetchedAt);
+  assert.strictEqual(storage.profileData.lastFetchedAt, '2020-01-01T00:00:00.000Z');
+  assert.strictEqual(storage.currentScheduleData.term, 'spring-2025');
+  assert.strictEqual(storage.gradesData.cacheVersion, 3);
   assert.strictEqual(cloudCalls.some((call) => call.action === 'refreshAll'), true);
 
   dataStore.clearAll();

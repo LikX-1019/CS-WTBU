@@ -3,6 +3,7 @@ const { ensureBound, redirectToLogin } = require('../../utils/auth');
 const { loadProfile, refreshEduCache, saveProfile } = require('../../utils/dataStore');
 const { formatProfile, getEmptyProfile } = require('../../utils/schedule');
 const { getCustomNavStyle } = require('../../utils/system');
+const { withShare } = require('../../utils/share');
 
 const EDIT_FIELDS = [
   { key: 'name', label: '姓名' },
@@ -48,11 +49,10 @@ function buildActions(isAdmin) {
   ]);
 }
 
-Page({
+Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), formatProfile(getEmptyProfile()), {
     loading: false,
     errorText: '',
-    cacheWarningText: '',
     rawProfile: getEmptyProfile(),
     editVisible: false,
     savingProfile: false,
@@ -68,7 +68,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadProfile({ force: true }).finally(() => {
+    this.loadProfile().finally(() => {
       wx.stopPullDownRefresh();
     });
   },
@@ -105,16 +105,11 @@ Page({
   setProfileData(profile, isAdmin, lastFetchedAt = '') {
     const rawProfile = Object.assign({}, getEmptyProfile(), profile || {});
     const adminVisible = Boolean(isAdmin);
-    const fetchedTime = new Date(lastFetchedAt || '').getTime();
-    const cacheWarningText = Number.isFinite(fetchedTime) && fetchedTime > 0 && Date.now() - fetchedTime > 48 * 60 * 60 * 1000
-      ? '数据库课表数据已超过48小时，建议更新数据库。'
-      : '';
 
     this.setData(Object.assign({}, formatProfile(rawProfile), {
       rawProfile,
       isAdmin: adminVisible,
-      actions: buildActions(adminVisible),
-      cacheWarningText
+      actions: buildActions(adminVisible)
     }));
   },
 
@@ -160,7 +155,7 @@ Page({
 
     wx.showModal({
       title: '更新数据库',
-      content: '将从教务系统重新获取课表、考试和成绩，并重置48小时缓存时间。',
+      content: '\u5c06\u4ece\u6559\u52a1\u7cfb\u7edf\u91cd\u65b0\u83b7\u53d6\u8bfe\u8868\u3001\u8003\u8bd5\u548c\u6210\u7ee9\u6570\u636e\u3002',
       confirmText: '更新',
       confirmColor: '#2f7bff',
       success: (result) => {
@@ -181,9 +176,6 @@ Page({
     try {
       await ensureBound();
       const data = await refreshEduCache();
-      if (data.refreshedAt) {
-        this.setProfileData(this.data.rawProfile, this.data.isAdmin, data.refreshedAt);
-      }
 
       wx.showToast({
         title: data.refreshedAt ? '数据库已更新' : '更新完成',
@@ -309,4 +301,4 @@ Page({
   goProfile() {
     goTab('profile');
   }
-});
+}));

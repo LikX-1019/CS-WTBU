@@ -40,9 +40,15 @@ const context = {
       };
     }
 
+    if (name === 'axios') {
+      return context.axiosMock;
+    }
+
     return localRequire(name);
   }
 };
+
+context.axiosMock = localRequire('axios');
 
 context.global = context;
 vm.runInNewContext(source, context, { filename: indexPath });
@@ -434,7 +440,46 @@ async function runCacheTests() {
   assert.strictEqual(schoolsResult.success, true);
   assert.strictEqual(schoolsResult.data.defaultSchoolId, 'wtbu');
   assert.strictEqual(schoolsResult.data.schools[0].id, 'wtbu');
+  assert.deepStrictEqual(schoolsResult.data.schools[0].weatherLocation, {
+    name: '武汉工商学院',
+    latitude: 30.4611,
+    longitude: 114.279297
+  });
   assert.strictEqual(typeof getSchool('wtbu').adapter.fetchAllByCredentials, 'function');
+
+  const weatherRequests = [];
+  const originalAxiosGet = context.axiosMock.get;
+  context.axiosMock.get = (url, options) => {
+    weatherRequests.push({ url, options });
+
+    return Promise.resolve({
+      data: {
+        current: {
+          temperature_2m: 28.6,
+          weather_code: 2,
+          time: '2026-06-21T10:00'
+        }
+      }
+    });
+  };
+  const weatherResult = await context.exports.main({ action: 'weather', schoolId: 'wtbu' });
+  assert.strictEqual(weatherResult.success, true);
+  assert.strictEqual(weatherResult.data.displayText, '武汉工商学院 · 多云 29°C');
+  assert.strictEqual(weatherResult.data.weatherText, '多云');
+  assert.strictEqual(weatherResult.data.temperature, 28.6);
+  assert.strictEqual(weatherRequests.length, 1);
+  assert.strictEqual(weatherRequests[0].url, 'https://api.open-meteo.com/v1/forecast');
+  assert.strictEqual(weatherRequests[0].options.params.latitude, 30.4611);
+  assert.strictEqual(weatherRequests[0].options.params.longitude, 114.279297);
+  assert.strictEqual(weatherRequests[0].options.params.current, 'temperature_2m,weather_code');
+
+  context.axiosMock.get = () => {
+    return Promise.reject(new Error('network failed'));
+  };
+  const weatherError = await context.exports.main({ action: 'weather', schoolId: 'wtbu' });
+  assert.strictEqual(weatherError.success, false);
+  assert.strictEqual(weatherError.code, 'WEATHER_UNAVAILABLE');
+  context.axiosMock.get = originalAxiosGet;
 
   let capturedUpdate = null;
   const cachedGrades = { summary: [], semesters: [] };
@@ -567,6 +612,10 @@ async function runCacheTests() {
   assert.strictEqual(manualResult.data.schedule.term, 'term-manual');
   assert.deepStrictEqual(toPlain(manualResult.data.grades), createCachedGrades('manual'));
   assert.strictEqual(manualState.updates.length, 1);
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(manualState.updates[0].options.data, 'profile'),
+    false
+  );
 
   const refreshCurrentBinding = createBinding();
   const refreshCurrentState = useFakeDb(refreshCurrentBinding);

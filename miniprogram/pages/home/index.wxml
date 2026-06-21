@@ -6,16 +6,17 @@
   <view class="content home-content">
     <view class="date-row">
       <view>
-        <view class="date-title">{{today}}</view>
-        <view class="date-week">{{weekText || '正在加载课表'}}<text wx:if="{{lastFetchedText}}"> · {{lastFetchedText}} 更新</text></view>
+        <view class="date-title">
+          <text>{{today}}</text>
+          <text wx:if="{{lastFetchedText}}" class="date-updated">{{lastFetchedText}}</text>
+        </view>
+        <view wx:if="{{weatherText}}" class="date-weather">{{weatherText}}</view>
       </view>
       <view class="calendar-mini"></view>
     </view>
 
     <view wx:if="{{loading}}" class="soft-card state-card">正在读取已缓存课程和考试...</view>
     <view wx:elif="{{errorText}}" class="soft-card state-card state-error">{{errorText}}</view>
-    <view wx:if="{{cacheWarningText}}" class="soft-card state-card state-warning">{{cacheWarningText}}</view>
-
     <view class="section-head">
       <view class="section-title">今日安排</view>
       <text>共 {{items.length}} 项</text>

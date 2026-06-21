@@ -1,7 +1,8 @@
 const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
-const { loadCurrentSchedule, loadSchedule } = require('../../utils/dataStore');
+const { getSemesterScheduleCache, loadCurrentSchedule, loadSchedule } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
+const { withShare } = require('../../utils/share');
 const {
   buildWeekOptions,
   buildDays,
@@ -105,7 +106,7 @@ function createLoadOptions(options = {}, semesterId = '') {
   };
 }
 
-Page({
+Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), {
     weekText: '',
     currentWeek: getCurrentTeachingWeek(),
@@ -133,8 +134,22 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadSchedule(this.data.selectedSemesterId, {
+    const pendingSemester = this.pendingRefreshSemester || null;
+    const semesterId = pendingSemester && pendingSemester.id || this.data.selectedSemesterId;
+
+    return this.loadSchedule(semesterId, {
       fromDatabase: true
+    }).then((switched) => {
+      if (switched && pendingSemester && pendingSemester.id === semesterId) {
+        this.pendingRefreshSemester = null;
+        this.setData({
+          semesterIndex: pendingSemester.index,
+          selectedSemesterId: pendingSemester.id,
+          selectedSemesterLabel: pendingSemester.label
+        });
+      }
+
+      return switched;
     }).finally(() => {
       wx.stopPullDownRefresh();
     });
@@ -278,9 +293,26 @@ Page({
     const previousSemesterId = this.data.selectedSemesterId;
     const previousSemesterLabel = this.data.selectedSemesterLabel;
 
-    this.loadSchedule(semester.id, {
-      fromDatabase: true
-    }).then((switched) => {
+    if (!getSemesterScheduleCache(semester.id)) {
+      this.pendingRefreshSemester = {
+        id: semester.id,
+        label: semester.label,
+        index
+      };
+      this.setData({
+        semesterIndex: previousSemesterIndex,
+        selectedSemesterId: previousSemesterId,
+        selectedSemesterLabel: previousSemesterLabel
+      });
+      wx.showToast({
+        title: '本地暂无该学期缓存，请下拉刷新',
+        icon: 'none'
+      });
+      return;
+    }
+
+    this.pendingRefreshSemester = null;
+    this.loadSchedule(semester.id).then((switched) => {
       if (!switched) {
         this.setData({
           semesterIndex: previousSemesterIndex,
@@ -350,7 +382,7 @@ Page({
   goProfile() {
     goTab('profile');
   }
-});
+}));
 
 module.exports = {
   __test__: {

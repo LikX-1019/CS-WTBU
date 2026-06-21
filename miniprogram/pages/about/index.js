@@ -1,6 +1,7 @@
 const { getCustomNavStyle } = require('../../utils/system');
+const { withShare } = require('../../utils/share');
 
-Page({
+Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), {
     version: '1.0.0'
   }),
@@ -15,4 +16,4 @@ Page({
       url: '/pages/profile/index'
     });
   }
-});
+}));

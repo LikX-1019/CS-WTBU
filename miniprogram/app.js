@@ -1,5 +1,6 @@
 const { ensureBound } = require('./utils/auth');
 const { loadCurrentSchedule, loadGrades } = require('./utils/dataStore');
+const { preloadWeatherForSchedule } = require('./utils/weather');
 
 App({
   onLaunch() {
@@ -19,6 +20,10 @@ App({
 
     ensureBound()
       .then(() => loadCurrentSchedule())
+      .then((schedule) => {
+        preloadWeatherForSchedule(schedule).catch(() => {});
+        return schedule;
+      })
       .then(() => loadGrades())
       .catch(() => {});
   }

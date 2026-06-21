@@ -2,22 +2,22 @@ const { goTab } = require('../../utils/nav');
 const { ensureBound, redirectToLogin } = require('../../utils/auth');
 const { loadCurrentSchedule } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
+const { withShare } = require('../../utils/share');
+const { getWeatherDisplayText, preloadWeatherForSchedule } = require('../../utils/weather');
 const {
   formatFetchTime,
-  formatWeekText,
   getTodayScheduleItems,
   getTodayText
 } = require('../../utils/schedule');
 
-Page({
+Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), {
     today: getTodayText(),
-    weekText: '',
     items: [],
     loading: false,
     errorText: '',
-    cacheWarningText: '',
-    lastFetchedText: ''
+    lastFetchedText: '',
+    weatherText: ''
   }),
 
   onShow() {
@@ -25,7 +25,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadSchedule({ force: true }).finally(() => {
+    this.loadSchedule().finally(() => {
       wx.stopPullDownRefresh();
     });
   },
@@ -43,20 +43,16 @@ Page({
 
     try {
       await ensureBound();
-      const data = await loadCurrentSchedule({
-        force: Boolean(options.force)
-      });
-      const fetchedTime = new Date(data.lastFetchedAt || '').getTime();
-      const cacheWarningText = Number.isFinite(fetchedTime) && fetchedTime > 0 && Date.now() - fetchedTime > 48 * 60 * 60 * 1000
-        ? '课表数据已超过48小时，建议到个人页更新数据库。'
-        : '';
+      const data = await loadCurrentSchedule();
+      const lastFetchedText = formatFetchTime(data.lastFetchedAt);
 
       this.setData({
-        weekText: formatWeekText(data.term, undefined, data.termStartDate),
         items: getTodayScheduleItems(data.courses, data.exams, data.termStartDate),
-        cacheWarningText,
-        lastFetchedText: formatFetchTime(data.lastFetchedAt)
+        lastFetchedText: lastFetchedText ? `${lastFetchedText} \u66f4\u65b0` : '',
+        weatherText: getWeatherDisplayText(data)
       });
+
+      this.loadWeather(data);
     } catch (error) {
       if (error.code === 'NO_BINDING') {
         redirectToLogin();
@@ -69,6 +65,20 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  loadWeather(schedule) {
+    preloadWeatherForSchedule(schedule)
+      .then((weather) => {
+        this.setData({
+          weatherText: weather && weather.displayText ? weather.displayText : getWeatherDisplayText(schedule)
+        });
+      })
+      .catch(() => {
+        this.setData({
+          weatherText: getWeatherDisplayText(schedule)
+        });
+      });
   },
 
   goHome() {
@@ -86,4 +96,4 @@ Page({
   goProfile() {
     goTab('profile');
   }
-});
+}));

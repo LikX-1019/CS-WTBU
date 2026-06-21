@@ -2029,6 +2029,11 @@ module.exports = {
   name: '武汉工商学院',
   aliases: ['武汉工商学院', '武工商', 'WTBU', 'wtbu'],
   eduSystemUrl: `${EDU_CONFIG.baseUrl}${EDU_CONFIG.homePath}`,
+  weatherLocation: {
+    name: '\u6b66\u6c49\u5de5\u5546\u5b66\u9662',
+    latitude: 30.4611,
+    longitude: 114.279297
+  },
   fetchScheduleByCredentials,
   fetchSemestersByCredentials,
   fetchGradesByCredentials,

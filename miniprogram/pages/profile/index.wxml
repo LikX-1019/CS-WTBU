@@ -29,8 +29,6 @@
       <view class="profile-arrow"></view>
     </view>
     <view class="edit-hint">点击卡片补充或修改个人信息</view>
-    <view wx:if="{{cacheWarningText}}" class="soft-card cache-warning">{{cacheWarningText}}</view>
-
     <view class="soft-card info-panel">
       <view class="panel-title">基本信息</view>
       <view wx:for="{{baseInfo}}" wx:key="label" class="info-row">

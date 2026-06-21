@@ -52,6 +52,7 @@ Page({
     filteredSchools: [DEFAULT_SCHOOL],
     selectedSchoolId: DEFAULT_SCHOOL.id,
     schoolSearchText: DEFAULT_SCHOOL.name,
+    subtitleText: '\u7ed1\u5b9a\u540e\u53ef\u540c\u6b65\u8bfe\u8868\u3001\u8003\u8bd5\u548c\u6210\u7ee9\uff1b\u5e73\u65f6\u4f18\u5148\u8bfb\u53d6\u4e91\u7aef\u5df2\u7f13\u5b58\u6570\u636e\uff0c\u9700\u8981\u65f6\u53ef\u624b\u52a8\u66f4\u65b0\u6570\u636e\u5e93\u3002',
     schoolDropdownVisible: false,
     studentId: '',
     password: '',

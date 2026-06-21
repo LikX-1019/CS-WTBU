@@ -3,6 +3,7 @@ const { ensureBound, redirectToLogin } = require('../../utils/auth');
 const { getCurrentScheduleCache, loadCurrentSchedule, loadGrades } = require('../../utils/dataStore');
 const { getCustomNavStyle } = require('../../utils/system');
 const { normalizeExamItems } = require('../../utils/schedule');
+const { withShare } = require('../../utils/share');
 
 const EMPTY_SUMMARY = [
   { label: '总学分', value: '--' },
@@ -135,7 +136,7 @@ function buildExamSummary(exams = []) {
   });
 }
 
-Page({
+Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), {
     summary: EMPTY_SUMMARY,
     semesters: [],
@@ -153,7 +154,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadGrades({ force: true }).finally(() => {
+    this.loadGrades().finally(() => {
       wx.stopPullDownRefresh();
     });
   },
@@ -273,4 +274,4 @@ Page({
   goProfile() {
     goTab('profile');
   }
-});
+}));

@@ -11,6 +11,7 @@ const schools = adapters.map((adapter) => ({
   name: adapter.name,
   aliases: adapter.aliases,
   eduSystemUrl: adapter.eduSystemUrl,
+  weatherLocation: adapter.weatherLocation || null,
   adapter
 }));
 
@@ -33,7 +34,8 @@ function toPublicSchool(school) {
     id: school.id,
     name: school.name,
     aliases: Array.isArray(school.aliases) ? school.aliases : [],
-    eduSystemUrl: school.eduSystemUrl || ''
+    eduSystemUrl: school.eduSystemUrl || '',
+    weatherLocation: school.weatherLocation || null
   };
 }
 
