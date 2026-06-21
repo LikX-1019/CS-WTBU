@@ -44,7 +44,7 @@ global.wx = {
 };
 
 const schedulePage = require('./index.js');
-const { resolveScheduleViewState } = schedulePage.__test__;
+const { findSemesterIndexById, resolveScheduleViewState } = schedulePage.__test__;
 
 const duplicatedSemesterData = {
   cacheVersion: 3,
@@ -69,6 +69,13 @@ assert.strictEqual(resolved.activeSemester.id, '242');
 assert.strictEqual(resolved.semesters[0].id, '242');
 assert.strictEqual(resolved.semesters[0].label, '2025-2026学年第二学期');
 assert.strictEqual(resolved.courses[0].id, 'course-242');
+assert.strictEqual(findSemesterIndexById([{ id: '262' }, { id: '242' }], '242'), 1);
+
+function flushPromises() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
 
 async function runPageTests() {
   Object.keys(storage).forEach((key) => {
@@ -163,7 +170,96 @@ async function runPageTests() {
   }
 }
 
+async function runPickerIndexTest() {
+  Object.keys(storage).forEach((key) => {
+    delete storage[key];
+  });
+  toastCalls = [];
+
+  const targetSchedule = {
+    cacheVersion: 3,
+    term: '2026-2027学年第一学期',
+    selectedSemesterId: '262',
+    courses: [{ id: 'course-262', weekday: 1, sections: [1] }],
+    semesters: [
+      { id: '242', label: '2025-2026学年第二学期' },
+      { id: '262', label: '2026-2027学年第一学期', selected: true },
+      { id: '222', label: '2025-2026学年第一学期' }
+    ],
+    school: { id: 'wtbu' }
+  };
+
+  storage.scheduleDataBySemester = {
+    262: targetSchedule
+  };
+
+  const page = {
+    data: {
+      loading: false,
+      currentWeek: 1,
+      currentSchedule: duplicatedSemesterData,
+      semesterIndex: 0,
+      selectedSemesterId: '242',
+      selectedSemesterLabel: '2025-2026学年第二学期',
+      semesterOptions: [
+        { id: '242', label: '2025-2026学年第二学期' },
+        { id: '262', label: '2026-2027学年第一学期' },
+        { id: '222', label: '2025-2026学年第一学期' }
+      ]
+    },
+    setData(next) {
+      this.data = Object.assign({}, this.data, next);
+    }
+  };
+
+  Object.keys(pageConfig).forEach((key) => {
+    if (typeof pageConfig[key] === 'function') {
+      page[key] = pageConfig[key];
+    }
+  });
+
+  cloudHandler = (data) => {
+    if (data && data.action === 'status') {
+      return {
+        success: true,
+        data: { bound: true }
+      };
+    }
+
+    if (data && data.action === 'getTermWeekConfig') {
+      return {
+        success: true,
+        data: {
+          config: {
+            termStartDate: '2026-09-07'
+          }
+        }
+      };
+    }
+
+    return {
+      success: false,
+      code: 'UNEXPECTED',
+      message: 'unexpected call'
+    };
+  };
+
+  try {
+    page.onSemesterChange({ detail: { value: 1 } });
+    await flushPromises();
+    await flushPromises();
+
+    const actualIndex = page.data.semesterOptions.findIndex((semester) => semester.id === page.data.selectedSemesterId);
+    assert.strictEqual(page.data.selectedSemesterId, '262');
+    assert.strictEqual(page.data.semesterIndex, actualIndex);
+    assert.strictEqual(page.data.semesterOptions[page.data.semesterIndex].id, '262');
+  } finally {
+    cloudHandler = null;
+  }
+}
+
 runPageTests()
+  .then(() => runPickerIndexTest())
   .then(() => {
     console.log('schedule page tests passed');
   })

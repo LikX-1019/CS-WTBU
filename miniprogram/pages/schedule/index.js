@@ -106,6 +106,15 @@ function createLoadOptions(options = {}, semesterId = '') {
   };
 }
 
+function findSemesterIndexById(semesters = [], semesterId = '') {
+  const normalizedId = String(semesterId || '');
+  const index = (Array.isArray(semesters) ? semesters : []).findIndex((semester) => (
+    String(semester && semester.id || '') === normalizedId
+  ));
+
+  return index >= 0 ? index : 0;
+}
+
 Page(withShare({
   data: Object.assign({}, getCustomNavStyle(), {
     weekText: '',
@@ -141,11 +150,12 @@ Page(withShare({
       fromDatabase: true
     }).then((switched) => {
       if (switched && pendingSemester && pendingSemester.id === semesterId) {
+        const semesterIndex = findSemesterIndexById(this.data.semesterOptions, pendingSemester.id);
         this.pendingRefreshSemester = null;
         this.setData({
-          semesterIndex: pendingSemester.index,
+          semesterIndex,
           selectedSemesterId: pendingSemester.id,
-          selectedSemesterLabel: pendingSemester.label
+          selectedSemesterLabel: this.data.semesterOptions[semesterIndex] && this.data.semesterOptions[semesterIndex].label || pendingSemester.label
         });
       }
 
@@ -322,10 +332,11 @@ Page(withShare({
         return;
       }
 
+      const semesterIndex = findSemesterIndexById(this.data.semesterOptions, semester.id);
       this.setData({
-        semesterIndex: index,
+        semesterIndex,
         selectedSemesterId: semester.id,
-        selectedSemesterLabel: semester.label
+        selectedSemesterLabel: this.data.semesterOptions[semesterIndex] && this.data.semesterOptions[semesterIndex].label || semester.label
       });
     });
   },
@@ -387,6 +398,7 @@ Page(withShare({
 module.exports = {
   __test__: {
     getSemesterCanonicalKey,
+    findSemesterIndexById,
     normalizeSemestersForView,
     resolveScheduleViewState
   }
